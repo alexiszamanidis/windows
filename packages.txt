@@ -1,0 +1,17 @@
+# One WinGet package ID per line.
+# Lines starting with # are ignored.
+
+# Browsers
+Google.Chrome
+
+# Communication
+Discord.Discord
+Rakuten.Viber
+# WhatsApp (Microsoft Store)
+9NKSQGP7F2NH
+
+# Development
+Git.Git
+
+# Utilities
+input-leap.input-leap

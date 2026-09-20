@@ -1,0 +1,96 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-2025
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate PowerShell
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path ./install.ps1),
+            [ref]$tokens,
+            [ref]$parseErrors
+          )
+
+          if ($parseErrors.Count -gt 0) {
+            $parseErrors | Format-List
+            throw "install.ps1 contains PowerShell syntax errors."
+          }
+
+          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+          $analysis = Invoke-ScriptAnalyzer -Path ./install.ps1 -Severity Warning,Error
+          if ($analysis) {
+            $analysis | Format-Table -AutoSize
+            throw "PSScriptAnalyzer found issues."
+          }
+
+      - name: Test installer behavior
+        shell: pwsh
+        run: |
+          $packages = @(
+            Get-Content ./packages.txt |
+              ForEach-Object { $_.Trim() } |
+              Where-Object { $_ -and -not $_.StartsWith("#") }
+          )
+
+          if ($packages.Count -eq 0) {
+            throw "packages.txt contains no package IDs."
+          }
+
+          $duplicates = $packages | Group-Object | Where-Object Count -gt 1
+          if ($duplicates) {
+            throw "packages.txt contains duplicate IDs: $($duplicates.Name -join ', ')"
+          }
+
+          $global:wingetCalls = [System.Collections.Generic.List[string]]::new()
+          function global:winget {
+            $global:wingetCalls.Add(($args -join " "))
+            $global:LASTEXITCODE = 0
+          }
+
+          & ./install.ps1
+
+          if ($global:wingetCalls.Count -ne $packages.Count) {
+            throw "Expected $($packages.Count) WinGet calls, got $($global:wingetCalls.Count)."
+          }
+
+          foreach ($id in $packages) {
+            if (-not ($global:wingetCalls -match "--id $([regex]::Escape($id)) --exact")) {
+              throw "install.ps1 did not request the exact package ID '$id'."
+            }
+          }
+
+      - name: Verify packages exist in WinGet
+        shell: pwsh
+        run: |
+          winget source update --disable-interactivity
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not update WinGet sources."
+          }
+
+          $packages = Get-Content ./packages.txt |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { $_ -and -not $_.StartsWith("#") }
+
+          foreach ($id in $packages) {
+            Write-Host "Checking $id"
+            winget show --id $id --exact --accept-source-agreements --disable-interactivity
+            if ($LASTEXITCODE -ne 0) {
+              throw "WinGet package '$id' could not be resolved."
+            }
+          }
