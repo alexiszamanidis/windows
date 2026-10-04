@@ -1,0 +1,16 @@
+{
+    "type": "module",
+    "name": "windows",
+    "version": "1.0.0",
+    "description": "This repository installs Windows applications",
+    "scripts": {
+        "format": "prettier . --write"
+    },
+    "author": "Alexis Zamanidis",
+    "license": "MIT",
+    "devDependencies": {
+        "prettier": "^2.8.0",
+        "@alexiszamanidis/prettier-config": "1.0.1"
+    },
+    "prettier": "@alexiszamanidis/prettier-config"
+}

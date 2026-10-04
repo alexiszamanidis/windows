@@ -1,0 +1,11 @@
+---
+name: ci
+
+on: [pull_request, push]
+jobs:
+  format:
+    uses: alexiszamanidis/.github/.github/workflows/prettier.yml@master
+    permissions:
+      contents: write
+    with:
+      node-version: "18"
