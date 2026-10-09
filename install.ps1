@@ -33,6 +33,39 @@ $packages = Get-Content $packagesFile |
     ForEach-Object { $_.Trim() } |
     Where-Object { $_ -and -not $_.StartsWith("#") }
 
+function Set-DarkMode {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    $personalizePath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+    if (-not $PSCmdlet.ShouldProcess($personalizePath, "Set Windows and app color mode to Dark")) {
+        return
+    }
+
+    New-Item -Path $personalizePath -Force | Out-Null
+    New-ItemProperty -Path $personalizePath -Name "AppsUseLightTheme" -PropertyType DWord -Value 0 -Force | Out-Null
+    New-ItemProperty -Path $personalizePath -Name "SystemUsesLightTheme" -PropertyType DWord -Value 0 -Force | Out-Null
+
+    if (-not ([System.Management.Automation.PSTypeName]"WindowsSetup.ThemeNativeMethods").Type) {
+        Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+
+namespace WindowsSetup {
+    public static class ThemeNativeMethods {
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint message, IntPtr wParam, string lParam, uint flags, uint timeout, out IntPtr result);
+    }
+}
+"@
+    }
+
+    $broadcastResult = [IntPtr]::Zero
+    [void][WindowsSetup.ThemeNativeMethods]::SendMessageTimeout([IntPtr]0xffff, 0x001A, [IntPtr]::Zero, "ImmersiveColorSet", 0x0002, 5000, [ref]$broadcastResult)
+
+    Write-Information "Windows and app color mode set to Dark."
+}
+
 function Set-DesktopWallpaper {
     [CmdletBinding(SupportsShouldProcess)]
     param()
@@ -84,6 +117,7 @@ namespace WindowsSetup {
     Write-Information "Desktop wallpaper set to $wallpaperName."
 }
 
+Set-DarkMode
 Set-DesktopWallpaper
 
 if ($packages.Count -eq 0) {
