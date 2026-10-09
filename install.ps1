@@ -33,6 +33,59 @@ $packages = Get-Content $packagesFile |
     ForEach-Object { $_.Trim() } |
     Where-Object { $_ -and -not $_.StartsWith("#") }
 
+function Set-DesktopWallpaper {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    $wallpaperName = "black-cat-dual-monitor-wallpaper.jpg"
+    $wallpaperPath = Join-Path (Join-Path $env:APPDATA "WindowsSetup") $wallpaperName
+    if (-not $PSCmdlet.ShouldProcess($wallpaperPath, "Set desktop wallpaper")) {
+        return
+    }
+
+    $localWallpaperPath = if ($PSScriptRoot) {
+        Join-Path $PSScriptRoot $wallpaperName
+    }
+
+    New-Item -ItemType Directory -Path (Split-Path -Parent $wallpaperPath) -Force | Out-Null
+    if ($localWallpaperPath -and (Test-Path -LiteralPath $localWallpaperPath)) {
+        Copy-Item -LiteralPath $localWallpaperPath -Destination $wallpaperPath -Force
+    } else {
+        Write-Information "Downloading desktop wallpaper..."
+        Invoke-WebRequest -Uri "$repoRawBase/master/$wallpaperName" -OutFile $wallpaperPath -UseBasicParsing
+    }
+
+    $desktopSettings = "HKCU:\Control Panel\Desktop"
+    Set-ItemProperty -Path $desktopSettings -Name "WallpaperStyle" -Value "22"
+    Set-ItemProperty -Path $desktopSettings -Name "TileWallpaper" -Value "0"
+
+    if (-not ([System.Management.Automation.PSTypeName]"WindowsSetup.WallpaperNativeMethods").Type) {
+        Add-Type -TypeDefinition @"
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+
+namespace WindowsSetup {
+    public static class WallpaperNativeMethods {
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool SystemParametersInfo(uint action, uint parameter, string value, uint flags);
+    }
+}
+"@
+    }
+
+    # SPI_SETDESKWALLPAPER with SPIF_UPDATEINIFILE | SPIF_SENDCHANGE.
+    if (-not [WindowsSetup.WallpaperNativeMethods]::SystemParametersInfo(20, 0, $wallpaperPath, 3)) {
+        $win32Error = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw [ComponentModel.Win32Exception]::new($win32Error, "Failed to set the desktop wallpaper.")
+    }
+
+    Write-Information "Desktop wallpaper set to $wallpaperName."
+}
+
+Set-DesktopWallpaper
+
 if ($packages.Count -eq 0) {
     Write-Information "packages.txt has no package IDs yet."
     exit 0
