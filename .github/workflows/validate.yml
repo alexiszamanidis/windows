@@ -96,6 +96,43 @@ jobs:
             throw "install.ps1 invoked Ansible. Ubuntu install should stop before Linux packages."
           }
 
+          function Get-ProvisionedTerminalSettings {
+            $packagesRoot = Join-Path $env:LOCALAPPDATA "Packages"
+            $knownFamily = Join-Path $packagesRoot "Microsoft.WindowsTerminal_8wekyb3d8bbwe"
+            $familyPath = $knownFamily
+            if (-not (Test-Path $knownFamily)) {
+              $family = Get-ChildItem -Path $packagesRoot -Directory -Filter "Microsoft.WindowsTerminal_*" -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -notlike "*Preview*" } |
+                Select-Object -First 1
+              if (-not $family) {
+                throw "Windows Terminal settings directory was not created."
+              }
+              $familyPath = $family.FullName
+            }
+
+            $settingsPath = Join-Path $familyPath "LocalState\settings.json"
+            if (-not (Test-Path -LiteralPath $settingsPath)) {
+              throw "Windows Terminal settings were not written."
+            }
+
+            return [System.IO.File]::ReadAllText($settingsPath)
+          }
+
+          $terminalSettings = Get-ProvisionedTerminalSettings
+          if ($terminalSettings -notmatch "Hack Nerd Font Mono") {
+            throw "Windows Terminal settings do not use Hack Nerd Font Mono."
+          }
+          if ($terminalSettings -notmatch "2c4de342-38b7-51cf-b940-2309a097f518") {
+            throw "Windows Terminal settings do not use the Ubuntu profile GUID."
+          }
+          if ($terminalSettings -match "Ubuntu 20.04|DroidSansMono|__WSL_") {
+            throw "Windows Terminal settings still contain a stale profile or placeholder."
+          }
+          $fontPath = Join-Path $env:LOCALAPPDATA "Microsoft\Windows\Fonts\HackNerdFontMono-Regular.ttf"
+          if (-not (Test-Path -LiteralPath $fontPath)) {
+            throw "Hack Nerd Font Mono was not installed."
+          }
+
           $global:wslCalls = [System.Collections.Generic.List[string]]::new()
           function global:wsl {
             $global:wslCalls.Add(($args -join " "))
@@ -142,6 +179,14 @@ jobs:
 
           if (-not ($global:wslCalls -match "--set-default Ubuntu-24.04")) {
             throw "install.ps1 did not keep Ubuntu-24.04 as the default WSL distro."
+          }
+
+          $versionedSettings = Get-ProvisionedTerminalSettings
+          if ($versionedSettings -notmatch "963ff2f7-6aed-5ce3-9d91-90d99571f53a") {
+            throw "Windows Terminal settings were not regenerated for Ubuntu-24.04."
+          }
+          if ($versionedSettings -notmatch "wsl.exe -d Ubuntu-24.04") {
+            throw "Windows Terminal profile was not pointed at Ubuntu-24.04."
           }
 
           $rebootOutput = pwsh -NoProfile -Command @'
