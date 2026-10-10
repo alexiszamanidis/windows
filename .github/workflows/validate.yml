@@ -63,6 +63,15 @@ jobs:
             $global:LASTEXITCODE = 0
           }
 
+          $global:wslCalls = [System.Collections.Generic.List[string]]::new()
+          function global:wsl {
+            $global:wslCalls.Add(($args -join " "))
+            $global:LASTEXITCODE = 0
+            if ($args -contains "--list") {
+              return "  NAME      STATE           VERSION"
+            }
+          }
+
           & ./install.ps1
 
           if ($global:wingetCalls.Count -ne $packages.Count) {
@@ -73,6 +82,88 @@ jobs:
             if (-not ($global:wingetCalls -match "--id $([regex]::Escape($id)) --exact")) {
               throw "install.ps1 did not request the exact package ID '$id'."
             }
+          }
+
+          if (-not ($global:wslCalls -match "--set-default-version 2")) {
+            throw "install.ps1 did not set WSL2 as the default version."
+          }
+
+          if (-not ($global:wslCalls -match "--install --distribution Ubuntu --no-launch --web-download")) {
+            throw "install.ps1 did not request Ubuntu on WSL."
+          }
+
+          if ($global:wslCalls -match "ansible") {
+            throw "install.ps1 invoked Ansible. Ubuntu install should stop before Linux packages."
+          }
+
+          $global:wslCalls = [System.Collections.Generic.List[string]]::new()
+          function global:wsl {
+            $global:wslCalls.Add(($args -join " "))
+            $global:LASTEXITCODE = 0
+            if ($args -contains "--list") {
+              return @(
+                "  NAME      STATE           VERSION"
+                "* Ubuntu    Stopped         2"
+              )
+            }
+          }
+
+          & ./install.ps1
+
+          if ($global:wslCalls -match "--distribution Ubuntu") {
+            throw "install.ps1 tried to install Ubuntu even though it is already installed."
+          }
+
+          if (-not ($global:wslCalls -match "--set-default Ubuntu")) {
+            throw "install.ps1 did not keep Ubuntu as the default WSL distro."
+          }
+
+          $global:wslCalls = [System.Collections.Generic.List[string]]::new()
+          function global:wsl {
+            $global:wslCalls.Add(($args -join " "))
+            $global:LASTEXITCODE = 0
+            if ($args -contains "--list") {
+              return @(
+                "  NAME      STATE           VERSION"
+                "  Ubuntu-24.04    Stopped         1"
+              )
+            }
+          }
+
+          & ./install.ps1
+
+          if ($global:wslCalls -match "--distribution Ubuntu") {
+            throw "install.ps1 installed a second Ubuntu distro."
+          }
+
+          if (-not ($global:wslCalls -match "--set-version Ubuntu-24.04 2")) {
+            throw "install.ps1 did not convert Ubuntu-24.04 to WSL2."
+          }
+
+          if (-not ($global:wslCalls -match "--set-default Ubuntu-24.04")) {
+            throw "install.ps1 did not keep Ubuntu-24.04 as the default WSL distro."
+          }
+
+          $rebootOutput = pwsh -NoProfile -Command @'
+          $ErrorActionPreference = "Stop"
+          function global:winget { $global:LASTEXITCODE = 0 }
+          function global:wsl {
+            $global:LASTEXITCODE = 1
+            if ($args -contains "--no-distribution") {
+              return "Changes will not be effective until the system is rebooted."
+            }
+            return "The Windows Subsystem for Linux is not installed."
+          }
+          & ./install.ps1 *>&1 | ForEach-Object { "$_" }
+          '@ | Out-String
+          if ($LASTEXITCODE -ne 0) {
+            throw "WSL reboot path failed with exit code ${LASTEXITCODE}: $rebootOutput"
+          }
+          if ($rebootOutput -notmatch "Restart Windows, then run this installer again to install Ubuntu") {
+            throw "WSL reboot path did not report that a restart is required: $rebootOutput"
+          }
+          if ($rebootOutput -match "Installing Ubuntu for WSL") {
+            throw "WSL reboot path continued into the Ubuntu install."
           }
 
       - name: Verify packages exist in WinGet
