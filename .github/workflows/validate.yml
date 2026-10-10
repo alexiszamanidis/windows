@@ -84,6 +84,16 @@ jobs:
             }
           }
 
+          $inputLeapCall = @($global:wingetCalls | Where-Object { $_ -match "--id input-leap.input-leap " })
+          if ($inputLeapCall.Count -ne 1 -or $inputLeapCall[0] -notmatch "--silent" -or $inputLeapCall[0] -notmatch "--custom /FORCECLOSEAPPLICATIONS") {
+            throw "Input Leap was not installed with its manifest options."
+          }
+
+          $storeCall = @($global:wingetCalls | Where-Object { $_ -match "--id 9NKSQGP7F2NH " })
+          if ($storeCall.Count -ne 1 -or $storeCall[0] -notmatch "--source msstore") {
+            throw "WhatsApp was not installed from the Microsoft Store source."
+          }
+
           if (-not ($global:wslCalls -match "--set-default-version 2")) {
             throw "install.ps1 did not set WSL2 as the default version."
           }

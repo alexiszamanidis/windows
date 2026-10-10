@@ -33,6 +33,23 @@ $packages = Get-Content $packagesFile |
     ForEach-Object { $_.Trim() } |
     Where-Object { $_ -and -not $_.StartsWith("#") }
 
+$packageOptionsFile = if ($PSScriptRoot) {
+    Join-Path $PSScriptRoot "packages.psd1"
+} else {
+    Join-Path $env:TEMP "windows-packages.psd1"
+}
+
+if (-not (Test-Path $packageOptionsFile)) {
+    Write-Information "packages.psd1 not found locally. Downloading from GitHub..."
+    try {
+        Invoke-WebRequest -Uri "$repoRawBase/master/packages.psd1" -OutFile $packageOptionsFile -UseBasicParsing
+    } catch {
+        throw "packages.psd1 not found at $packageOptionsFile and download from GitHub failed."
+    }
+}
+
+$packageOptions = Import-PowerShellDataFile $packageOptionsFile
+
 function Set-DarkMode {
     [CmdletBinding(SupportsShouldProcess)]
     param()
@@ -129,29 +146,42 @@ $wingetUpdateNotApplicable = -1978335189
 # 0x8A15010C: Inno Setup aborted a suppressed prompt and WinGet reports it as cancelled.
 $wingetInstallCancelled = -1978334964
 
-function Stop-InputLeapProcess {
+function Stop-PackageApplication {
     [CmdletBinding(SupportsShouldProcess)]
-    param()
+    param(
+        [string[]]$ProcessName,
+        [string]$ServiceName
+    )
 
-    if (-not $PSCmdlet.ShouldProcess("Input Leap")) {
+    $target = if ($ServiceName) { $ServiceName } else { "package processes" }
+    if (-not $PSCmdlet.ShouldProcess($target)) {
         return
     }
 
     $previousErrorAction = $ErrorActionPreference
     $ErrorActionPreference = "SilentlyContinue"
-    foreach ($name in @("input-leap", "input-leapd", "input-leapc", "input-leaps")) {
+    foreach ($name in $ProcessName) {
         Get-Process -Name $name | Stop-Process -Force
     }
-    Stop-Service -Name "InputLeap" -Force
+    if ($ServiceName) {
+        Stop-Service -Name $ServiceName -Force
+    }
     $ErrorActionPreference = $previousErrorAction
 }
 
 function Install-WinGetPackage {
     [CmdletBinding(SupportsShouldProcess)]
-    param([string]$Id)
+    param(
+        [string]$Id,
+        [hashtable]$Option
+    )
 
     if (-not $PSCmdlet.ShouldProcess($Id)) {
         return 0
+    }
+
+    if (-not $Option) {
+        $Option = @{}
     }
 
     $arguments = @(
@@ -163,10 +193,18 @@ function Install-WinGetPackage {
         "--disable-interactivity"
     )
 
-    if ($Id -eq "input-leap.input-leap") {
+    if ($Option.Source) {
+        $arguments += @("--source", $Option.Source)
+    }
+    if ($Option.Silent) {
+        $arguments += "--silent"
+    }
+    if ($Option.Processes -or $Option.Service) {
         # The silent installer exits 5 when it cannot close a program using its files.
-        Stop-InputLeapProcess
-        $arguments += @("--silent", "--custom", "/FORCECLOSEAPPLICATIONS")
+        Stop-PackageApplication -ProcessName $Option.Processes -ServiceName $Option.Service
+    }
+    if ($Option.Custom) {
+        $arguments += @("--custom", $Option.Custom)
     }
 
     & winget @arguments | Out-Host
@@ -174,11 +212,12 @@ function Install-WinGetPackage {
 }
 
 foreach ($id in $packages) {
+    $option = $packageOptions[$id]
     Write-Information "Installing $id"
-    $exitCode = Install-WinGetPackage $id
-    if ($id -eq "input-leap.input-leap" -and $exitCode -eq $wingetInstallCancelled) {
-        Write-Information "Input Leap installer aborted. Closing its processes and retrying."
-        $exitCode = Install-WinGetPackage $id
+    $exitCode = Install-WinGetPackage -Id $id -Option $option
+    if ($option.RetryOnCancel -and $exitCode -eq $wingetInstallCancelled) {
+        Write-Information "$id installer aborted. Closing its processes and retrying."
+        $exitCode = Install-WinGetPackage -Id $id -Option $option
     }
     if ($exitCode -eq $wingetUpdateNotApplicable) {
         Write-Information "$id is already installed and up to date."

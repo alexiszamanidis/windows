@@ -1,5 +1,6 @@
 # One WinGet package ID per line.
 # Lines starting with # are ignored.
+# Extra installer options live in packages.psd1.
 
 # Browsers
 Google.Chrome
