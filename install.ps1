@@ -8,11 +8,40 @@ $packagesFile = if ($PSScriptRoot) {
     Join-Path $env:TEMP "windows-packages.txt"
 }
 
+$knownTasks = @("DarkMode", "Wallpaper", "Explorer", "LongPaths", "Packages", "Wsl", "Font", "Terminal")
+$selectedTasks = $null
+# A param block would break `irm ... | iex`, so a file run takes the task list as its first argument.
+if ($PSCommandPath -and $args.Count -gt 0) {
+    $selectedTasks = @($args[0].Split(",") | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
+if (-not $selectedTasks -and $env:WINDOWS_TASKS) {
+    $selectedTasks = @($env:WINDOWS_TASKS.Split(",") | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
+if (-not $selectedTasks) {
+    $selectedTasks = $knownTasks
+}
+$unknownTasks = @($selectedTasks | Where-Object { $knownTasks -notcontains $_ })
+if ($unknownTasks.Count -gt 0) {
+    throw "Unknown task: $($unknownTasks -join ', '). Known tasks: $($knownTasks -join ', ')."
+}
+
+function Test-SelectedTask {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Name
+    )
+
+    return $selectedTasks -contains $Name
+}
+
 $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Information "Administrator permission is required. Restarting elevated..."
     if ($PSCommandPath) {
-        $argumentList = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $PSCommandPath)
+        $argumentList = @(
+            "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $PSCommandPath,
+            ($selectedTasks -join ",")
+        )
     } else {
         $argumentList = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "irm $repoRawBase/master/install.ps1 | iex")
     }
@@ -105,8 +134,11 @@ function Set-DesktopWallpaper {
         Invoke-WebRequest -Uri "$repoRawBase/master/$wallpaperName" -OutFile $wallpaperPath -UseBasicParsing
     }
 
+    $monitorCount = Get-DesktopMonitorCount
+    # Span across two or more monitors. Fill on a single monitor.
+    $wallpaperStyle = if ($monitorCount -ge 2) { "22" } else { "10" }
     $desktopSettings = "HKCU:\Control Panel\Desktop"
-    Set-ItemProperty -Path $desktopSettings -Name "WallpaperStyle" -Value "22"
+    Set-ItemProperty -Path $desktopSettings -Name "WallpaperStyle" -Value $wallpaperStyle
     Set-ItemProperty -Path $desktopSettings -Name "TileWallpaper" -Value "0"
 
     if (-not ([System.Management.Automation.PSTypeName]"WindowsSetup.WallpaperNativeMethods").Type) {
@@ -134,11 +166,78 @@ namespace WindowsSetup {
     Write-Information "Desktop wallpaper set to $wallpaperName."
 }
 
-Set-DarkMode
-Set-DesktopWallpaper
+function Get-DesktopMonitorCount {
+    try {
+        Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
+        $count = @([System.Windows.Forms.Screen]::AllScreens).Count
+        if ($count -gt 0) {
+            return $count
+        }
+    } catch {
+        Write-Information "Could not count monitors. Using one display for the wallpaper."
+    }
 
-if ($packages.Count -eq 0) {
-    Write-Information "packages.txt has no package IDs yet."
+    return 1
+}
+
+function Set-ExplorerPreference {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    $explorerPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+    if (-not $PSCmdlet.ShouldProcess($explorerPath, "Show file extensions and hidden files")) {
+        return
+    }
+
+    New-Item -Path $explorerPath -Force | Out-Null
+    New-ItemProperty -Path $explorerPath -Name "HideFileExt" -PropertyType DWord -Value 0 -Force | Out-Null
+    New-ItemProperty -Path $explorerPath -Name "Hidden" -PropertyType DWord -Value 1 -Force | Out-Null
+    Write-Information "File Explorer shows extensions and hidden files."
+}
+
+function Enable-LongPath {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    if (-not $PSCmdlet.ShouldProcess("Windows and Git", "Enable long paths")) {
+        return
+    }
+
+    $registryPath = "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem"
+    New-ItemProperty -Path $registryPath -Name "LongPathsEnabled" -PropertyType DWord -Value 1 -Force | Out-Null
+    Write-Information "Windows long paths are enabled."
+
+    $gitCommand = $null
+    $gitOnPath = Get-Command git -ErrorAction SilentlyContinue
+    if ($gitOnPath) {
+        $gitCommand = $gitOnPath.Source
+    } else {
+        $gitCandidate = Join-Path $env:ProgramFiles "Git\cmd\git.exe"
+        if (Test-Path -LiteralPath $gitCandidate) {
+            $gitCommand = $gitCandidate
+        }
+    }
+
+    if (-not $gitCommand) {
+        Write-Information "Git is not installed yet, so core.longpaths was not set."
+        return
+    }
+
+    & $gitCommand config --global core.longpaths true
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not set Git core.longpaths (exit code $LASTEXITCODE)."
+    }
+    Write-Information "Git core.longpaths is enabled."
+}
+
+if (Test-SelectedTask "DarkMode") {
+    Set-DarkMode
+}
+if (Test-SelectedTask "Wallpaper") {
+    Set-DesktopWallpaper
+}
+if (Test-SelectedTask "Explorer") {
+    Set-ExplorerPreference
 }
 
 # 0x8A15002B: package is already installed and no newer version is available.
@@ -211,21 +310,31 @@ function Install-WinGetPackage {
     return $LASTEXITCODE
 }
 
-foreach ($id in $packages) {
-    $option = $packageOptions[$id]
-    Write-Information "Installing $id"
-    $exitCode = Install-WinGetPackage -Id $id -Option $option
-    if ($option.RetryOnCancel -and $exitCode -eq $wingetInstallCancelled) {
-        Write-Information "$id installer aborted. Closing its processes and retrying."
+if (Test-SelectedTask "Packages") {
+    if ($packages.Count -eq 0) {
+        Write-Information "packages.txt has no package IDs yet."
+    }
+
+    foreach ($id in $packages) {
+        $option = $packageOptions[$id]
+        Write-Information "Installing $id"
         $exitCode = Install-WinGetPackage -Id $id -Option $option
+        if ($option.RetryOnCancel -and $exitCode -eq $wingetInstallCancelled) {
+            Write-Information "$id installer aborted. Closing its processes and retrying."
+            $exitCode = Install-WinGetPackage -Id $id -Option $option
+        }
+        if ($exitCode -eq $wingetUpdateNotApplicable) {
+            Write-Information "$id is already installed and up to date."
+            continue
+        }
+        if ($exitCode -ne 0) {
+            throw "WinGet failed to install $id (exit code $exitCode)."
+        }
     }
-    if ($exitCode -eq $wingetUpdateNotApplicable) {
-        Write-Information "$id is already installed and up to date."
-        continue
-    }
-    if ($exitCode -ne 0) {
-        throw "WinGet failed to install $id (exit code $exitCode)."
-    }
+}
+
+if (Test-SelectedTask "LongPaths") {
+    Enable-LongPath
 }
 
 function Get-WslOutput {
@@ -564,6 +673,12 @@ function Set-WindowsTerminalSetting {
     Write-Information "Windows Terminal settings written for $distroName."
 }
 
-Install-WslUbuntu
-Install-HackNerdFont
-Set-WindowsTerminalSetting
+if (Test-SelectedTask "Wsl") {
+    Install-WslUbuntu
+}
+if (Test-SelectedTask "Font") {
+    Install-HackNerdFont
+}
+if (Test-SelectedTask "Terminal") {
+    Set-WindowsTerminalSetting
+}

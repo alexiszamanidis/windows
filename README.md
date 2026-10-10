@@ -8,6 +8,19 @@ This repository installs Windows applications.
 irm https://raw.githubusercontent.com/alexiszamanidis/windows/master/install.ps1 | iex
 ```
 
+### Tasks
+
+The installer runs every task unless you name a subset. Separate names with a comma.
+
+```
+.\install.ps1 Packages
+.\install.ps1 DarkMode,Wallpaper,Explorer,LongPaths
+```
+
+`DarkMode`, `Wallpaper`, `Explorer` and `LongPaths` change Windows settings. `Packages` installs the WinGet packages. `Wsl`, `Font` and `Terminal` set up Ubuntu, Hack Nerd Font Mono and Windows Terminal. Long paths are also enabled for Git when Git is already installed.
+
+The one-liner runs every task. Set `WINDOWS_TASKS` to the same comma-separated list to run a subset.
+
 ### Terminal
 
 The installer downloads Hack Nerd Font Mono and writes Windows Terminal settings. Ansible installs the same font family inside Linux. The default profile is the Ubuntu distro that is installed.

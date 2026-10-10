@@ -221,6 +221,16 @@ jobs:
             throw "WSL reboot path continued into the Ubuntu install."
           }
 
+          $global:wslCalls = [System.Collections.Generic.List[string]]::new()
+          $global:wingetCalls = [System.Collections.Generic.List[string]]::new()
+          & ./install.ps1 Packages
+          if ($global:wslCalls.Count -ne 0) {
+            throw "The Packages task invoked WSL."
+          }
+          if ($global:wingetCalls.Count -ne $packages.Count) {
+            throw "The Packages task did not install every package."
+          }
+
       - name: Verify packages exist in WinGet
         shell: pwsh
         run: |
