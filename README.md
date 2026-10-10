@@ -23,15 +23,15 @@ The URL follows the repository default branch. The one-liner runs every task. Se
 
 ### What it changes
 
-- Dark mode for Windows and apps
-- The desktop wallpaper. Span when two or more monitors are connected, fill on one
-- File Explorer shows extensions and hidden files
-- Long paths in Windows and Git `core.longpaths`
-- Git name, email, pull rebase, default branch and fetch prune. The credential helper is `manager`
-- The WinGet packages in `packages.txt`
-- The Input Leap server layout. Desktop is on the left and the Linux client is on the right. The server starts at login
-- WSL2 and one Ubuntu distro
-- Hack Nerd Font Mono and Windows Terminal settings. The default profile is the Ubuntu distro that is installed. Ansible installs the same font family inside Linux
+-   Dark mode for Windows and apps
+-   The desktop wallpaper. Span when two or more monitors are connected, fill on one
+-   File Explorer shows extensions and hidden files
+-   Long paths in Windows and Git `core.longpaths`
+-   Git name, email, pull rebase, default branch and fetch prune. The credential helper is `manager`
+-   The WinGet packages in `packages.txt`
+-   The Input Leap server layout. Desktop is on the left and the Linux client is on the right. The server starts at login
+-   WSL2 and one Ubuntu distro
+-   Hack Nerd Font Mono and Windows Terminal settings. The default profile is the Ubuntu distro that is installed. Ansible installs the same font family inside Linux
 
 ### Packages
 
