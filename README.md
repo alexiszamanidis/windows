@@ -17,7 +17,7 @@ The installer runs every task unless you name a subset. Separate names with a co
 .\install.ps1 DarkMode,Wallpaper,Explorer,LongPaths
 ```
 
-`DarkMode`, `Wallpaper`, `Explorer` and `LongPaths` change Windows settings. `Packages` installs the WinGet packages. `Wsl`, `Font` and `Terminal` set up Ubuntu, Hack Nerd Font Mono and Windows Terminal. Long paths are also enabled for Git when Git is already installed.
+`DarkMode`, `Wallpaper`, `Explorer` and `LongPaths` change Windows settings. `Git` sets the name, email, pull rebase, default branch and fetch prune. The credential helper is `manager`. `Packages` installs the WinGet packages. `Wsl`, `Font` and `Terminal` set up Ubuntu, Hack Nerd Font Mono and Windows Terminal. Long paths and the Git identity are applied when Git is already installed.
 
 The one-liner runs every task. Set `WINDOWS_TASKS` to the same comma-separated list to run a subset.
 

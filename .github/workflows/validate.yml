@@ -143,6 +143,21 @@ jobs:
             throw "Hack Nerd Font Mono was not installed."
           }
 
+          $gitExpectations = @{
+            "user.name" = "alexiszamanidis"
+            "user.email" = "alexiszamanidis@outlook.com"
+            "pull.rebase" = "true"
+            "init.defaultBranch" = "master"
+            "fetch.prune" = "true"
+            "credential.helper" = "manager"
+          }
+          foreach ($name in $gitExpectations.Keys) {
+            $value = git config --global --get $name
+            if ($LASTEXITCODE -ne 0 -or $value -ne $gitExpectations[$name]) {
+              throw "Git $name is '$value', expected '$($gitExpectations[$name])'."
+            }
+          }
+
           $global:wslCalls = [System.Collections.Generic.List[string]]::new()
           function global:wsl {
             $global:wslCalls.Add(($args -join " "))
@@ -223,12 +238,20 @@ jobs:
 
           $global:wslCalls = [System.Collections.Generic.List[string]]::new()
           $global:wingetCalls = [System.Collections.Generic.List[string]]::new()
+          git config --global user.name "packages-only-sentinel"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not set the Git sentinel before the Packages task."
+          }
           & ./install.ps1 Packages
           if ($global:wslCalls.Count -ne 0) {
             throw "The Packages task invoked WSL."
           }
           if ($global:wingetCalls.Count -ne $packages.Count) {
             throw "The Packages task did not install every package."
+          }
+          $gitName = git config --global --get user.name
+          if ($gitName -ne "packages-only-sentinel") {
+            throw "The Packages task changed the Git identity."
           }
 
       - name: Verify packages exist in WinGet
