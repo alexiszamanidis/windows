@@ -1,0 +1,11 @@
+section: screens
+    Desktop:
+    lg9hp6m3-ath.int.openbet.com:
+end
+
+section: links
+    Desktop:
+        right = lg9hp6m3-ath.int.openbet.com
+    lg9hp6m3-ath.int.openbet.com:
+        left = Desktop
+end

@@ -158,6 +158,15 @@ jobs:
             }
           }
 
+          $inputLeapConfig = Join-Path $env:LOCALAPPDATA "InputLeap\input-leap.sgc"
+          if (-not (Test-Path -LiteralPath $inputLeapConfig)) {
+            throw "Input Leap layout was not deployed."
+          }
+          $inputLeapText = [System.IO.File]::ReadAllText($inputLeapConfig)
+          if ($inputLeapText -notmatch "(?m)^    Desktop:" -or $inputLeapText -notmatch "(?m)^    lg9hp6m3-ath.int.openbet.com:" -or $inputLeapText -notmatch "right = lg9hp6m3-ath.int.openbet.com") {
+            throw "Input Leap layout does not place the Linux client to the right of Desktop."
+          }
+
           $global:wslCalls = [System.Collections.Generic.List[string]]::new()
           function global:wsl {
             $global:wslCalls.Add(($args -join " "))
@@ -242,6 +251,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "Could not set the Git sentinel before the Packages task."
           }
+          [System.IO.File]::WriteAllText($inputLeapConfig, "sentinel")
           & ./install.ps1 Packages
           if ($global:wslCalls.Count -ne 0) {
             throw "The Packages task invoked WSL."
@@ -252,6 +262,9 @@ jobs:
           $gitName = git config --global --get user.name
           if ($gitName -ne "packages-only-sentinel") {
             throw "The Packages task changed the Git identity."
+          }
+          if ([System.IO.File]::ReadAllText($inputLeapConfig) -ne "sentinel") {
+            throw "The Packages task changed the Input Leap layout."
           }
 
       - name: Verify packages exist in WinGet
