@@ -36,7 +36,25 @@ jobs:
           $analysis = Invoke-ScriptAnalyzer -Path ./install.ps1 -Severity Warning,Error
           if ($analysis) {
             $analysis | Format-Table -AutoSize
-            throw "PSScriptAnalyzer found issues."
+            throw "PSScriptAnalyzer found issues in ./install.ps1."
+          }
+          $analysis = Invoke-ScriptAnalyzer -Path ./install.Tests.ps1 -Severity Warning,Error -ExcludeRule PSAvoidGlobalFunctions
+          if ($analysis) {
+            $analysis | Format-Table -AutoSize
+            throw "PSScriptAnalyzer found issues in ./install.Tests.ps1."
+          }
+
+      - name: Unit tests
+        shell: pwsh
+        run: |
+          $pester = Get-Module -ListAvailable Pester | Sort-Object Version -Descending | Select-Object -First 1
+          if (-not $pester -or $pester.Version.Major -lt 5) {
+            Install-Module Pester -MinimumVersion 5.0.0 -Scope CurrentUser -Force -SkipPublisherCheck
+          }
+          Import-Module Pester -MinimumVersion 5.0.0
+          $result = Invoke-Pester -Path ./install.Tests.ps1 -Output Detailed -PassThru
+          if ($result.FailedCount -gt 0) {
+            throw "Pester reported $($result.FailedCount) failing tests."
           }
 
       - name: Test installer behavior

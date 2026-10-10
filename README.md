@@ -5,8 +5,10 @@ This repository installs Windows applications.
 ### Installation
 
 ```
-irm https://raw.githubusercontent.com/alexiszamanidis/windows/master/install.ps1 | iex
+irm https://raw.githubusercontent.com/alexiszamanidis/windows/HEAD/install.ps1 | iex
 ```
+
+The URL follows the repository default branch.
 
 ### Tasks
 

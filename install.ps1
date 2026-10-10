@@ -2,6 +2,8 @@ $ErrorActionPreference = "Stop"
 $InformationPreference = "Continue"
 
 $repoRawBase = "https://raw.githubusercontent.com/alexiszamanidis/windows"
+$repoRef = "HEAD"
+$installerRoot = $PSScriptRoot
 $packagesFile = if ($PSScriptRoot) {
     Join-Path $PSScriptRoot "packages.txt"
 } else {
@@ -43,7 +45,7 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
             ($selectedTasks -join ",")
         )
     } else {
-        $argumentList = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "irm $repoRawBase/master/install.ps1 | iex")
+        $argumentList = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "irm $repoRawBase/$repoRef/install.ps1 | iex")
     }
     Start-Process -FilePath "powershell" -Verb RunAs -ArgumentList $argumentList | Out-Null
     exit 0
@@ -52,7 +54,7 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 if (-not (Test-Path $packagesFile)) {
     Write-Information "packages.txt not found locally. Downloading from GitHub..."
     try {
-        Invoke-WebRequest -Uri "$repoRawBase/master/packages.txt" -OutFile $packagesFile -UseBasicParsing
+        Invoke-WebRequest -Uri "$repoRawBase/$repoRef/packages.txt" -OutFile $packagesFile -UseBasicParsing
     } catch {
         throw "packages.txt not found at $packagesFile and download from GitHub failed."
     }
@@ -71,7 +73,7 @@ $packageOptionsFile = if ($PSScriptRoot) {
 if (-not (Test-Path $packageOptionsFile)) {
     Write-Information "packages.psd1 not found locally. Downloading from GitHub..."
     try {
-        Invoke-WebRequest -Uri "$repoRawBase/master/packages.psd1" -OutFile $packageOptionsFile -UseBasicParsing
+        Invoke-WebRequest -Uri "$repoRawBase/$repoRef/packages.psd1" -OutFile $packageOptionsFile -UseBasicParsing
     } catch {
         throw "packages.psd1 not found at $packageOptionsFile and download from GitHub failed."
     }
@@ -91,7 +93,11 @@ function Set-DarkMode {
     New-Item -Path $personalizePath -Force | Out-Null
     New-ItemProperty -Path $personalizePath -Name "AppsUseLightTheme" -PropertyType DWord -Value 0 -Force | Out-Null
     New-ItemProperty -Path $personalizePath -Name "SystemUsesLightTheme" -PropertyType DWord -Value 0 -Force | Out-Null
+    Invoke-ThemeBroadcast
+    Write-Information "Windows and app color mode set to Dark."
+}
 
+function Invoke-ThemeBroadcast {
     if (-not ([System.Management.Automation.PSTypeName]"WindowsSetup.ThemeNativeMethods").Type) {
         Add-Type -TypeDefinition @"
 using System;
@@ -108,8 +114,6 @@ namespace WindowsSetup {
 
     $broadcastResult = [IntPtr]::Zero
     [void][WindowsSetup.ThemeNativeMethods]::SendMessageTimeout([IntPtr]0xffff, 0x001A, [IntPtr]::Zero, "ImmersiveColorSet", 0x0002, 5000, [ref]$broadcastResult)
-
-    Write-Information "Windows and app color mode set to Dark."
 }
 
 function Set-DesktopWallpaper {
@@ -122,8 +126,8 @@ function Set-DesktopWallpaper {
         return
     }
 
-    $localWallpaperPath = if ($PSScriptRoot) {
-        Join-Path $PSScriptRoot $wallpaperName
+    $localWallpaperPath = if ($installerRoot) {
+        Join-Path $installerRoot $wallpaperName
     }
 
     New-Item -ItemType Directory -Path (Split-Path -Parent $wallpaperPath) -Force | Out-Null
@@ -131,7 +135,7 @@ function Set-DesktopWallpaper {
         Copy-Item -LiteralPath $localWallpaperPath -Destination $wallpaperPath -Force
     } else {
         Write-Information "Downloading desktop wallpaper..."
-        Invoke-WebRequest -Uri "$repoRawBase/master/$wallpaperName" -OutFile $wallpaperPath -UseBasicParsing
+        Invoke-WebRequest -Uri "$repoRawBase/$repoRef/$wallpaperName" -OutFile $wallpaperPath -UseBasicParsing
     }
 
     $monitorCount = Get-DesktopMonitorCount
@@ -140,6 +144,15 @@ function Set-DesktopWallpaper {
     $desktopSettings = "HKCU:\Control Panel\Desktop"
     Set-ItemProperty -Path $desktopSettings -Name "WallpaperStyle" -Value $wallpaperStyle
     Set-ItemProperty -Path $desktopSettings -Name "TileWallpaper" -Value "0"
+    Invoke-WallpaperChange -Path $wallpaperPath
+    Write-Information "Desktop wallpaper set to $wallpaperName."
+}
+
+function Invoke-WallpaperChange {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
 
     if (-not ([System.Management.Automation.PSTypeName]"WindowsSetup.WallpaperNativeMethods").Type) {
         Add-Type -TypeDefinition @"
@@ -158,12 +171,10 @@ namespace WindowsSetup {
     }
 
     # SPI_SETDESKWALLPAPER with SPIF_UPDATEINIFILE | SPIF_SENDCHANGE.
-    if (-not [WindowsSetup.WallpaperNativeMethods]::SystemParametersInfo(20, 0, $wallpaperPath, 3)) {
+    if (-not [WindowsSetup.WallpaperNativeMethods]::SystemParametersInfo(20, 0, $Path, 3)) {
         $win32Error = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
         throw [ComponentModel.Win32Exception]::new($win32Error, "Failed to set the desktop wallpaper.")
     }
-
-    Write-Information "Desktop wallpaper set to $wallpaperName."
 }
 
 function Get-DesktopMonitorCount {
@@ -302,7 +313,7 @@ function Set-InputLeapLayout {
     }
     if (-not ($sourcePath -and (Test-Path -LiteralPath $sourcePath))) {
         $sourcePath = Join-Path $env:TEMP "windows-input-leap.sgc"
-        Invoke-WebRequest -Uri "$repoRawBase/master/input-leap.sgc" -OutFile $sourcePath -UseBasicParsing
+        Invoke-WebRequest -Uri "$repoRawBase/$repoRef/input-leap.sgc" -OutFile $sourcePath -UseBasicParsing
     }
 
     New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
@@ -407,8 +418,42 @@ function Install-WinGetPackage {
         $arguments += @("--custom", $Option.Custom)
     }
 
-    & winget @arguments | Out-Host
+    return Invoke-WinGet -Argument $arguments
+}
+
+function Invoke-WinGet {
+    param(
+        [string[]]$Argument
+    )
+
+    & winget @Argument | Out-Host
     return $LASTEXITCODE
+}
+
+function Install-RequestedPackage {
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [string]$Id,
+        [hashtable]$Option
+    )
+
+    if (-not $PSCmdlet.ShouldProcess($Id)) {
+        return
+    }
+
+    Write-Information "Installing $Id"
+    $exitCode = Install-WinGetPackage -Id $Id -Option $Option
+    if ($Option.RetryOnCancel -and $exitCode -eq $wingetInstallCancelled) {
+        Write-Information "$Id installer aborted. Closing its processes and retrying."
+        $exitCode = Install-WinGetPackage -Id $Id -Option $Option
+    }
+    if ($exitCode -eq $wingetUpdateNotApplicable) {
+        Write-Information "$Id is already installed and up to date."
+        return
+    }
+    if ($exitCode -ne 0) {
+        throw "WinGet failed to install $Id (exit code $exitCode)."
+    }
 }
 
 if (Test-SelectedTask "Packages") {
@@ -417,20 +462,7 @@ if (Test-SelectedTask "Packages") {
     }
 
     foreach ($id in $packages) {
-        $option = $packageOptions[$id]
-        Write-Information "Installing $id"
-        $exitCode = Install-WinGetPackage -Id $id -Option $option
-        if ($option.RetryOnCancel -and $exitCode -eq $wingetInstallCancelled) {
-            Write-Information "$id installer aborted. Closing its processes and retrying."
-            $exitCode = Install-WinGetPackage -Id $id -Option $option
-        }
-        if ($exitCode -eq $wingetUpdateNotApplicable) {
-            Write-Information "$id is already installed and up to date."
-            continue
-        }
-        if ($exitCode -ne 0) {
-            throw "WinGet failed to install $id (exit code $exitCode)."
-        }
+        Install-RequestedPackage -Id $id -Option $packageOptions[$id]
     }
 }
 
@@ -763,7 +795,7 @@ function Set-WindowsTerminalSetting {
     }
     if (-not ($templatePath -and (Test-Path -LiteralPath $templatePath))) {
         $templatePath = Join-Path $env:TEMP "windows-terminal-settings.json"
-        Invoke-WebRequest -Uri "$repoRawBase/master/terminal-settings.json" -OutFile $templatePath -UseBasicParsing
+        Invoke-WebRequest -Uri "$repoRawBase/$repoRef/terminal-settings.json" -OutFile $templatePath -UseBasicParsing
     }
 
     $distroName = Get-PreferredWslDistroName
