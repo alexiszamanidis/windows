@@ -8,4 +8,4 @@ jobs:
     permissions:
       contents: write
     with:
-      node-version: "18"
+      node-version: "24"
