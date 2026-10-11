@@ -162,9 +162,7 @@
                     previousWindowIdsByWorkspace.set(workspace.name, ids);
                 }
 
-                for (const name of [
-                    ...previousWindowIdsByWorkspace.keys(),
-                ]) {
+                for (const name of [...previousWindowIdsByWorkspace.keys()]) {
                     if (!seen.has(name)) {
                         previousWindowIdsByWorkspace.delete(name);
                         unreadWorkspaces.delete(name);
