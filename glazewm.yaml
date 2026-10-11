@@ -58,7 +58,7 @@ window_behavior:
       shown_on_top: false
     fullscreen:
       maximized: false
-      shown_on_top: false
+      shown_on_top: true
 
 workspaces:
   - name: '1'
