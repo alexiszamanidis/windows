@@ -1,34 +1,40 @@
 BeforeAll {
-    $tokens = $null
-    $parseErrors = $null
-    $ast = [System.Management.Automation.Language.Parser]::ParseFile(
-        (Resolve-Path ./install.ps1),
-        [ref]$tokens,
-        [ref]$parseErrors
-    )
-    if ($parseErrors.Count -gt 0) {
-        throw "install.ps1 contains PowerShell syntax errors. Tokens: $($tokens.Count)."
-    }
+    $scriptPaths = @(
+        (Resolve-Path ./install.ps1).Path
+    ) + @(Get-ChildItem ./tasks/*.ps1 | ForEach-Object { $_.FullName })
 
     # Calls between these functions stay in this scope. Replacing Function:script: from a test
     # does not change that lookup, so each function checks this table before running its body.
     $script:TestFunctionOverride = @{}
     $guard = 'if ($script:TestFunctionOverride -and $script:TestFunctionOverride.ContainsKey(''{0}'')) {{ return & $script:TestFunctionOverride[''{0}''] @PSBoundParameters }}'
 
-    $functions = $ast.FindAll({
-        param($node)
-        $node -is [System.Management.Automation.Language.FunctionDefinitionAst]
-    }, $true)
-    foreach ($function in $functions) {
-        $definition = $function.Extent.Text
-        $injection = $guard -f $function.Name
-        if ($function.Body.ParamBlock) {
-            $insertAt = $function.Body.ParamBlock.Extent.EndOffset - $function.Extent.StartOffset
-        } else {
-            $insertAt = ($function.Body.Extent.StartOffset - $function.Extent.StartOffset) + 1
+    foreach ($scriptPath in $scriptPaths) {
+        $tokens = $null
+        $parseErrors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile(
+            $scriptPath,
+            [ref]$tokens,
+            [ref]$parseErrors
+        )
+        if ($parseErrors.Count -gt 0) {
+            throw "$scriptPath contains PowerShell syntax errors. Tokens: $($tokens.Count)."
         }
 
-        . ([scriptblock]::Create($definition.Insert($insertAt, "`n$injection`n")))
+        $functions = $ast.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.FunctionDefinitionAst]
+        }, $true)
+        foreach ($function in $functions) {
+            $definition = $function.Extent.Text
+            $injection = $guard -f $function.Name
+            if ($function.Body.ParamBlock) {
+                $insertAt = $function.Body.ParamBlock.Extent.EndOffset - $function.Extent.StartOffset
+            } else {
+                $insertAt = ($function.Body.Extent.StartOffset - $function.Extent.StartOffset) + 1
+            }
+
+            . ([scriptblock]::Create($definition.Insert($insertAt, "`n$injection`n")))
+        }
     }
 
     $script:installerRoot = (Resolve-Path .).Path
@@ -58,10 +64,14 @@ BeforeAll {
 }
 
 Describe "Repository bootstrap" {
-    It "downloads sibling files from the default branch" {
-        $text = Get-Content ./install.ps1 -Raw
+    It "downloads repository files from the default branch" {
+        $paths = @((Resolve-Path ./install.ps1).Path) + @(Get-ChildItem ./tasks/*.ps1 | ForEach-Object { $_.FullName })
+        $text = (Get-Content -Path $paths -Raw) -join "`n"
         $text | Should -Not -Match "alexiszamanidis/windows/master/"
         $text | Should -Match '\$repoRef = "HEAD"'
+        $text | Should -Match "config/packages\.txt"
+        $text | Should -Match "config/glazewm\.yaml"
+        $text | Should -Match "config/zebar/zpack\.json"
     }
 }
 
@@ -168,12 +178,12 @@ Describe "Flow Launcher hotkey" {
         $tokens = $null
         $parseErrors = $null
         [void][System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path ./flow-launcher-hotkey.ps1),
+            (Resolve-Path ./config/flow-launcher-hotkey.ps1),
             [ref]$tokens,
             [ref]$parseErrors
         )
         $parseErrors.Count | Should -Be 0
-        $capture = Get-Content ./flow-launcher-hotkey.ps1 -Raw
+        $capture = Get-Content ./config/flow-launcher-hotkey.ps1 -Raw
         $capture | Should -Match "SearchWindows"
         $capture | Should -Match "QueryTextBox"
     }
@@ -343,7 +353,7 @@ Describe "GlazeWM" {
     }
 
     It "keeps the i3 workspaces and leaves Win+P to Flow Launcher" {
-        $config = Get-Content ./glazewm.yaml -Raw
+        $config = Get-Content ./config/glazewm.yaml -Raw
         $config | Should -Match "display_name: '1: chrome'"
         $config | Should -Match "display_name: '2: editor'"
         $config | Should -Match "display_name: '3: terminal'"
@@ -372,7 +382,7 @@ Describe "GlazeWM" {
         $config | Should -Match "\['lwin\+enter'\]"
         $config | Should -Not -Match "'lwin\+p'"
         $config | Should -Not -Match "'lwin\+l'"
-        Test-Path -LiteralPath ./chrome-startup.ps1 | Should -BeTrue
+        Test-Path -LiteralPath ./config/chrome-startup.ps1 | Should -BeTrue
     }
 
     It "writes the config and the login entry" {
@@ -393,11 +403,11 @@ Describe "GlazeWM" {
         $config | Should -Match "chrome-startup\.ps1"
         $linkedConfig = Get-Item -LiteralPath $configPath
         $linkedConfig.LinkType | Should -Be "SymbolicLink"
-        @($linkedConfig.Target)[0] | Should -Be (Resolve-Path ./glazewm.yaml).Path
+        @($linkedConfig.Target)[0] | Should -Be (Resolve-Path ./config/glazewm.yaml).Path
         $startupPath = Join-Path $directory "chrome-startup.ps1"
         $linkedStartup = Get-Item -LiteralPath $startupPath
         $linkedStartup.LinkType | Should -Be "SymbolicLink"
-        @($linkedStartup.Target)[0] | Should -Be (Resolve-Path ./chrome-startup.ps1).Path
+        @($linkedStartup.Target)[0] | Should -Be (Resolve-Path ./config/chrome-startup.ps1).Path
         Get-ItemPropertyValue -LiteralPath $runPath -Name "GlazeWM" | Should -Be '"C:\Program Files\glzr.io\GlazeWM\glazewm.exe"'
     }
 
