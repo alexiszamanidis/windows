@@ -90,7 +90,11 @@ function Set-DarkMode {
         return
     }
 
-    New-Item -Path $personalizePath -Force | Out-Null
+    # New-Item -Force on an existing registry key deletes its values.
+    # Recreating Personalize makes Windows fall back to light mode, and Cursor follows that.
+    if (-not (Test-Path -LiteralPath $personalizePath)) {
+        New-Item -Path $personalizePath | Out-Null
+    }
     New-ItemProperty -Path $personalizePath -Name "AppsUseLightTheme" -PropertyType DWord -Value 0 -Force | Out-Null
     New-ItemProperty -Path $personalizePath -Name "SystemUsesLightTheme" -PropertyType DWord -Value 0 -Force | Out-Null
     Invoke-ThemeBroadcast
@@ -254,7 +258,11 @@ function Set-ExplorerPreference {
         return
     }
 
-    New-Item -Path $explorerPath -Force | Out-Null
+    # New-Item -Force on an existing registry key deletes its values.
+    # Explorer\Advanced also denies recreating the key.
+    if (-not (Test-Path -LiteralPath $explorerPath)) {
+        New-Item -Path $explorerPath | Out-Null
+    }
     New-ItemProperty -Path $explorerPath -Name "HideFileExt" -PropertyType DWord -Value 0 -Force | Out-Null
     New-ItemProperty -Path $explorerPath -Name "Hidden" -PropertyType DWord -Value 1 -Force | Out-Null
     Write-Information "File Explorer shows extensions and hidden files."
@@ -1210,8 +1218,39 @@ function Start-GlazeWmProcess {
     }
 
     # uiAccess programs cannot be created directly. cmd start is the path the GlazeWM CLI uses.
-    # One argument string, because Windows PowerShell mishandles quoted items in an argument array.
-    Start-Process -FilePath "cmd.exe" -WindowStyle Hidden -ArgumentList "/c start `"`" `"$Executable`""
+    # Start it outside this console so closing the installer does not stop GlazeWM.
+    Start-DetachedProcess -FilePath (Join-Path $env:SystemRoot "System32\cmd.exe") -ArgumentList @(
+        "/c", "start", "", $Executable
+    )
+}
+
+function Start-DetachedProcess {
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory)]
+        [string]$FilePath,
+        [string[]]$ArgumentList
+    )
+
+    if (-not $PSCmdlet.ShouldProcess($FilePath, "Start detached")) {
+        return
+    }
+
+    # Win32_Process.Create runs from WMI, which has no console and is outside this
+    # window's process job. Zebar attaches to its parent console and exits with it.
+    $command = "`"$FilePath`""
+    foreach ($argument in $ArgumentList) {
+        if ($argument.Length -eq 0 -or $argument -match '[\s"]') {
+            $command += " `"$($argument.Replace('"', '\"'))`""
+        } else {
+            $command += " $argument"
+        }
+    }
+
+    $result = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = $command }
+    if ($result.ReturnValue -ne 0) {
+        throw "Could not start $FilePath (WMI error $($result.ReturnValue))."
+    }
 }
 
 function Get-ZebarConfigDirectory {
@@ -1330,7 +1369,8 @@ function Start-ZebarBar {
     }
 
     Stop-ZebarBar
-    Start-Process -FilePath $executable
+    # startup -q keeps the provider refresh from logging into the parent console.
+    Start-DetachedProcess -FilePath $executable -ArgumentList @("startup", "-q")
     Write-Information "Workspace bar started."
 }
 

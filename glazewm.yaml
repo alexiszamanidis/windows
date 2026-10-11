@@ -4,7 +4,7 @@
 
 general:
   startup_commands:
-    - 'shell-exec zebar'
+    - 'shell-exec zebar startup -q'
     - 'shell-exec --hide-window cmd.exe /c powershell.exe -NoProfile -ExecutionPolicy Bypass -File %USERPROFILE%\.glzr\glazewm\chrome-startup.ps1'
   shutdown_commands:
     - 'shell-exec taskkill /IM zebar.exe /F'
