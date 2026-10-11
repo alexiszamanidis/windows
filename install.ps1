@@ -10,7 +10,7 @@ $packagesFile = if ($PSScriptRoot) {
     Join-Path $env:TEMP "windows-packages.txt"
 }
 
-$knownTasks = @("DarkMode", "Wallpaper", "Explorer", "LongPaths", "Git", "Packages", "FlowLauncher", "InputLeap", "Wsl", "Font", "Terminal")
+$knownTasks = @("DarkMode", "Wallpaper", "Explorer", "LongPaths", "Git", "Packages", "FlowLauncher", "GlazeWM", "InputLeap", "Wsl", "Font", "Terminal")
 $selectedTasks = $null
 # A param block would break `irm ... | iex`, so a file run takes the task list as its first argument.
 if ($PSCommandPath -and $args.Count -gt 0) {
@@ -750,6 +750,166 @@ function Set-FlowLauncherHotkey {
 
 if (Test-SelectedTask "FlowLauncher") {
     Set-FlowLauncherHotkey
+}
+
+function Get-GlazeWmConfigPath {
+    return Join-Path (Join-Path $env:USERPROFILE ".glzr\glazewm") "config.yaml"
+}
+
+function Get-GlazeWmExecutable {
+    $candidates = @(
+        (Join-Path $env:ProgramFiles "glzr.io\GlazeWM\glazewm.exe")
+        (Join-Path $env:ProgramFiles "glzr.io\glazewm.exe")
+    )
+    $programFilesX86 = ${env:ProgramFiles(x86)}
+    if ($programFilesX86) {
+        $candidates += Join-Path $programFilesX86 "glzr.io\GlazeWM\glazewm.exe"
+    }
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
+function Get-GlazeWmCli {
+    $executable = Get-GlazeWmExecutable
+    if (-not $executable) {
+        return $null
+    }
+
+    $cli = Join-Path (Join-Path (Split-Path -Parent $executable) "cli") "glazewm.exe"
+    if (Test-Path -LiteralPath $cli) {
+        return $cli
+    }
+
+    return $null
+}
+
+function Test-GlazeWmRunning {
+    $previousErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = "SilentlyContinue"
+    $running = [bool](Get-Process -Name "glazewm")
+    $ErrorActionPreference = $previousErrorAction
+    return $running
+}
+
+function Install-GlazeWmConfig {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    $configPath = Get-GlazeWmConfigPath
+    if (-not $PSCmdlet.ShouldProcess($configPath, "Deploy GlazeWM config")) {
+        return
+    }
+
+    $sourcePath = if ($installerRoot) {
+        Join-Path $installerRoot "glazewm.yaml"
+    } else {
+        $null
+    }
+    if (-not ($sourcePath -and (Test-Path -LiteralPath $sourcePath))) {
+        $sourcePath = Join-Path $env:TEMP "windows-glazewm.yaml"
+        Invoke-WebRequest -Uri "$repoRawBase/$repoRef/glazewm.yaml" -OutFile $sourcePath -UseBasicParsing
+    }
+
+    New-Item -ItemType Directory -Path (Split-Path -Parent $configPath) -Force | Out-Null
+    Copy-Item -LiteralPath $sourcePath -Destination $configPath -Force
+    Write-Information "GlazeWM config written."
+}
+
+function Enable-GlazeWmStartup {
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [string]$RunPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run",
+        [string]$Executable = $(Get-GlazeWmExecutable)
+    )
+
+    if (-not $Executable) {
+        return
+    }
+
+    if (-not $PSCmdlet.ShouldProcess($RunPath, "Start GlazeWM at login")) {
+        return
+    }
+
+    if (-not (Test-Path -LiteralPath $RunPath)) {
+        New-Item -Path $RunPath -Force | Out-Null
+    }
+
+    # Same value the GlazeWM tray writes. Explorer can launch this uiAccess executable.
+    $runValue = "`"$Executable`""
+    New-ItemProperty -Path $RunPath -Name "GlazeWM" -PropertyType String -Value $runValue -Force | Out-Null
+    Write-Information "GlazeWM starts at login."
+}
+
+function Invoke-GlazeWmReload {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    $cli = Get-GlazeWmCli
+    if (-not $cli) {
+        Write-Information "GlazeWM is running. Reload the config with Win+Shift+C."
+        return
+    }
+
+    if (-not $PSCmdlet.ShouldProcess($cli, "Reload GlazeWM config")) {
+        return
+    }
+
+    & $cli command wm-reload-config | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not reload GlazeWM (exit code $LASTEXITCODE)."
+    }
+
+    Write-Information "GlazeWM config reloaded."
+}
+
+function Start-GlazeWmProcess {
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Executable
+    )
+
+    if (-not $PSCmdlet.ShouldProcess($Executable, "Start")) {
+        return
+    }
+
+    # uiAccess programs cannot be created directly. cmd start is the path the GlazeWM CLI uses.
+    # One argument string, because Windows PowerShell mishandles quoted items in an argument array.
+    Start-Process -FilePath "cmd.exe" -WindowStyle Hidden -ArgumentList "/c start `"`" `"$Executable`""
+}
+
+function Set-GlazeWm {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    if (-not $PSCmdlet.ShouldProcess("GlazeWM", "Install the i3 layout")) {
+        return
+    }
+
+    Install-GlazeWmConfig
+    $executable = Get-GlazeWmExecutable
+    if (-not $executable) {
+        Write-Information "GlazeWM is not installed yet, so it was not started."
+        return
+    }
+
+    Enable-GlazeWmStartup -Executable $executable
+    if (Test-GlazeWmRunning) {
+        Invoke-GlazeWmReload
+        return
+    }
+
+    Start-GlazeWmProcess -Executable $executable
+}
+
+if (Test-SelectedTask "GlazeWM") {
+    Set-GlazeWm
 }
 
 if (Test-SelectedTask "LongPaths") {

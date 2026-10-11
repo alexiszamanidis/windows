@@ -197,6 +197,18 @@ jobs:
             throw "Win+P was not disabled. DisabledHotkeys is '$disabledHotkeys'."
           }
 
+          $glazeConfig = Join-Path $env:USERPROFILE ".glzr\glazewm\config.yaml"
+          if (-not (Test-Path -LiteralPath $glazeConfig)) {
+            throw "GlazeWM config was not deployed."
+          }
+          $glazeText = [System.IO.File]::ReadAllText($glazeConfig)
+          if ($glazeText -notmatch "display_name: '1: chrome'" -or $glazeText -notmatch "display_name: '10: brave'" -or $glazeText -notmatch "shell-exec wt") {
+            throw "GlazeWM config does not keep the i3 workspaces."
+          }
+          if ($glazeText -match "'lwin\+p'" -or $glazeText -match "'lwin\+l'") {
+            throw "GlazeWM config binds a shortcut reserved for Flow Launcher or the Windows lock screen."
+          }
+
           $inputLeapConfig = Join-Path $env:LOCALAPPDATA "InputLeap\input-leap.sgc"
           if (-not (Test-Path -LiteralPath $inputLeapConfig)) {
             throw "Input Leap layout was not deployed."
@@ -292,6 +304,7 @@ jobs:
           }
           [System.IO.File]::WriteAllText($inputLeapConfig, "sentinel")
           [System.IO.File]::WriteAllText($flowSettings, "sentinel")
+          [System.IO.File]::WriteAllText($glazeConfig, "sentinel")
           & ./install.ps1 Packages
           if ($global:wslCalls.Count -ne 0) {
             throw "The Packages task invoked WSL."
@@ -308,6 +321,9 @@ jobs:
           }
           if ([System.IO.File]::ReadAllText($flowSettings) -ne "sentinel") {
             throw "The Packages task changed the Flow Launcher settings."
+          }
+          if ([System.IO.File]::ReadAllText($glazeConfig) -ne "sentinel") {
+            throw "The Packages task changed the GlazeWM config."
           }
 
       - name: Verify packages exist in WinGet

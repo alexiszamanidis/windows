@@ -1,0 +1,240 @@
+# Windows counterpart of the i3 config. The Windows key is i3's Mod4.
+# Win+P is left free for Flow Launcher. Win+L is left free because Windows reserves it for the lock screen, so focus-right is Win+Right.
+# GlazeWM has no stacking or tabbed layout and no focus-parent command. Win+E toggles the split direction.
+
+general:
+  startup_commands:
+    - 'shell-exec chrome'
+    - 'shell-exec wt'
+    - 'shell-exec slack'
+    - 'shell-exec brave'
+  shutdown_commands: []
+  config_reload_commands: []
+  focus_follows_cursor: false
+  toggle_workspace_on_refocus: false
+  cursor_jump:
+    enabled: true
+    trigger: 'monitor_focus'
+  hide_method: 'cloak'
+  show_all_in_taskbar: false
+
+gaps:
+  scale_with_dpi: true
+  inner_gap: '0px'
+  outer_gap:
+    top: '0px'
+    right: '0px'
+    bottom: '0px'
+    left: '0px'
+
+window_effects:
+  focused_window:
+    border:
+      enabled: true
+      color: '#6272A4'
+    hide_title_bar:
+      enabled: false
+    corner_style:
+      enabled: false
+      style: 'square'
+  other_windows:
+    border:
+      enabled: true
+      color: '#44475A'
+    hide_title_bar:
+      enabled: false
+    corner_style:
+      enabled: false
+      style: 'square'
+
+window_behavior:
+  initial_state: 'tiling'
+  state_defaults:
+    floating:
+      centered: true
+      shown_on_top: false
+    fullscreen:
+      maximized: false
+      shown_on_top: false
+
+workspaces:
+  - name: '1'
+    display_name: '1: chrome'
+  - name: '2'
+    display_name: '2: editor'
+  - name: '3'
+    display_name: '3: terminal'
+  - name: '4'
+    display_name: '4'
+  - name: '5'
+    display_name: '5: chat'
+  - name: '6'
+    display_name: '6: paint'
+  - name: '7'
+    display_name: '7: vpn'
+  - name: '8'
+    display_name: '8'
+  - name: '9'
+    display_name: '9: spotify'
+  - name: '10'
+    display_name: '10: brave'
+
+window_rules:
+  - commands: ['ignore']
+    match:
+      - window_process: { regex: '(?i)^flow(\.launcher)?$' }
+      - window_title: { regex: '(?i)picture.in.picture' }
+        window_class: { regex: 'Chrome_WidgetWin_1' }
+
+  - commands: ['move --workspace 1']
+    match:
+      - window_process: { regex: '(?i)^chrome$' }
+        window_title: { not_regex: '(?i)excalidraw|picture.in.picture' }
+
+  - commands: ['move --workspace 2']
+    match:
+      - window_process: { regex: '(?i)^(code|cursor)$' }
+
+  - commands: ['move --workspace 3']
+    match:
+      - window_process: { regex: '(?i)^windowsterminal$' }
+
+  - commands: ['move --workspace 5']
+    match:
+      - window_process: { regex: '(?i)^slack$' }
+
+  - commands: ['move --workspace 6']
+    match:
+      - window_process: { regex: '(?i)^chrome$' }
+        window_title: { regex: '(?i)excalidraw' }
+
+  - commands: ['move --workspace 7']
+    match:
+      - window_process: { regex: '(?i)^forti' }
+
+  - commands: ['move --workspace 9']
+    match:
+      - window_process: { regex: '(?i)^spotify$' }
+
+  - commands: ['move --workspace 10']
+    match:
+      - window_process: { regex: '(?i)^brave$' }
+
+binding_modes:
+  - name: 'resize'
+    keybindings:
+      - commands: ['resize --width +10px']
+        bindings: ['h', 'left']
+      - commands: ['resize --width -10px']
+        bindings: ['l', 'right']
+      - commands: ['resize --height +10px']
+        bindings: ['j', 'down']
+      - commands: ['resize --height -10px']
+        bindings: ['k', 'up']
+      - commands: ['wm-disable-binding-mode --name resize']
+        bindings: ['escape', 'enter', 'lwin+r']
+
+  - name: 'system'
+    keybindings:
+      - commands: ['shell-exec rundll32.exe user32.dll,LockWorkStation']
+        bindings: ['l']
+      - commands: ['wm-exit']
+        bindings: ['e']
+      - commands: ['shell-exec shutdown /s /t 0']
+        bindings: ['s']
+      - commands: ['shell-exec shutdown /r /t 0']
+        bindings: ['r']
+      - commands: ['wm-disable-binding-mode --name system']
+        bindings: ['escape', 'enter', 'lwin+x']
+
+keybindings:
+  - commands: ['focus --direction left']
+    bindings: ['lwin+h', 'lwin+left']
+  - commands: ['focus --direction down']
+    bindings: ['lwin+j', 'lwin+down']
+  - commands: ['focus --direction up']
+    bindings: ['lwin+k', 'lwin+up']
+  - commands: ['focus --direction right']
+    bindings: ['lwin+right']
+
+  - commands: ['move --direction left']
+    bindings: ['lwin+shift+h', 'lwin+shift+left']
+  - commands: ['move --direction down']
+    bindings: ['lwin+shift+j', 'lwin+shift+down']
+  - commands: ['move --direction up']
+    bindings: ['lwin+shift+k', 'lwin+shift+up']
+  - commands: ['move --direction right']
+    bindings: ['lwin+shift+l', 'lwin+shift+right']
+
+  - commands: ['shell-exec wt']
+    bindings: ['lwin+enter']
+  - commands: ['close']
+    bindings: ['lwin+q', 'lwin+shift+q']
+  - commands: ['toggle-fullscreen']
+    bindings: ['lwin+f']
+  - commands: ['toggle-tiling-direction']
+    bindings: ['lwin+e']
+  - commands: ['toggle-floating']
+    bindings: ['lwin+shift+space']
+  - commands: ['wm-cycle-focus']
+    bindings: ['lwin+space']
+
+  - commands: ['focus --next-active-workspace']
+    bindings: ['lwin+tab']
+  - commands: ['focus --prev-active-workspace']
+    bindings: ['lwin+shift+tab']
+
+  - commands: ['focus --workspace 1']
+    bindings: ['lwin+1']
+  - commands: ['focus --workspace 2']
+    bindings: ['lwin+2']
+  - commands: ['focus --workspace 3']
+    bindings: ['lwin+3']
+  - commands: ['focus --workspace 4']
+    bindings: ['lwin+4']
+  - commands: ['focus --workspace 5']
+    bindings: ['lwin+5']
+  - commands: ['focus --workspace 6']
+    bindings: ['lwin+6']
+  - commands: ['focus --workspace 7']
+    bindings: ['lwin+7']
+  - commands: ['focus --workspace 8']
+    bindings: ['lwin+8']
+  - commands: ['focus --workspace 9']
+    bindings: ['lwin+9']
+  - commands: ['focus --workspace 10']
+    bindings: ['lwin+0']
+
+  - commands: ['move --workspace 1']
+    bindings: ['lwin+shift+1']
+  - commands: ['move --workspace 2']
+    bindings: ['lwin+shift+2']
+  - commands: ['move --workspace 3']
+    bindings: ['lwin+shift+3']
+  - commands: ['move --workspace 4']
+    bindings: ['lwin+shift+4']
+  - commands: ['move --workspace 5']
+    bindings: ['lwin+shift+5']
+  - commands: ['move --workspace 6']
+    bindings: ['lwin+shift+6']
+  - commands: ['move --workspace 7']
+    bindings: ['lwin+shift+7']
+  - commands: ['move --workspace 8']
+    bindings: ['lwin+shift+8']
+  - commands: ['move --workspace 9']
+    bindings: ['lwin+shift+9']
+  - commands: ['move --workspace 10']
+    bindings: ['lwin+shift+0']
+
+  # Direction follows h and l. GlazeWM cannot target a monitor by output name.
+  - commands: ['move-workspace --direction left']
+    bindings: ['lwin+control+h', 'lwin+control+left']
+  - commands: ['move-workspace --direction right']
+    bindings: ['lwin+control+l', 'lwin+control+right']
+
+  - commands: ['wm-enable-binding-mode --name resize']
+    bindings: ['lwin+r']
+  - commands: ['wm-enable-binding-mode --name system']
+    bindings: ['lwin+x', 'lwin+shift+e']
+  - commands: ['wm-reload-config']
+    bindings: ['lwin+shift+c', 'lwin+shift+r']

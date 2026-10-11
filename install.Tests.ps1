@@ -266,3 +266,95 @@ Describe "Flow Launcher hotkey" {
         [System.IO.File]::ReadAllText($settingsPath) | Should -Match '"Hotkey": "Win \+ P"'
     }
 }
+
+Describe "GlazeWM" {
+    BeforeEach {
+        $script:TestFunctionOverride.Clear()
+    }
+
+    It "keeps the i3 workspaces and leaves Win+P to Flow Launcher" {
+        $config = Get-Content ./glazewm.yaml -Raw
+        $config | Should -Match "display_name: '1: chrome'"
+        $config | Should -Match "display_name: '2: editor'"
+        $config | Should -Match "display_name: '3: terminal'"
+        $config | Should -Match "display_name: '5: chat'"
+        $config | Should -Match "display_name: '6: paint'"
+        $config | Should -Match "display_name: '7: vpn'"
+        $config | Should -Match "display_name: '9: spotify'"
+        $config | Should -Match "display_name: '10: brave'"
+        $config | Should -Match "focus --workspace 10"
+        $config | Should -Match "shell-exec wt"
+        $config | Should -Match "\['lwin\+enter'\]"
+        $config | Should -Not -Match "'lwin\+p'"
+        $config | Should -Not -Match "'lwin\+l'"
+    }
+
+    It "writes the config and the login entry" {
+        $directory = Join-Path $TestDrive "glazewm"
+        $configPath = Join-Path $directory "config.yaml"
+        $runPath = "HKCU:\Software\WindowsSetupTest\Run"
+        if (Test-Path -LiteralPath "HKCU:\Software\WindowsSetupTest") {
+            Remove-Item -LiteralPath "HKCU:\Software\WindowsSetupTest" -Recurse -Force
+        }
+        Add-TestFunction Get-GlazeWmConfigPath { return $configPath }
+
+        Install-GlazeWmConfig
+        Enable-GlazeWmStartup -RunPath $runPath -Executable "C:\Program Files\glzr.io\GlazeWM\glazewm.exe"
+
+        $config = [System.IO.File]::ReadAllText($configPath)
+        $config | Should -Match "display_name: '1: chrome'"
+        $config | Should -Match "move --workspace 2"
+        Get-ItemPropertyValue -LiteralPath $runPath -Name "GlazeWM" | Should -Be '"C:\Program Files\glzr.io\GlazeWM\glazewm.exe"'
+    }
+
+    It "reloads a running GlazeWM instead of starting another one" {
+        $directory = Join-Path $TestDrive "glazewm-running"
+        $configPath = Join-Path $directory "config.yaml"
+        $script:reloads = 0
+        $script:starts = 0
+        Add-TestFunction Get-GlazeWmConfigPath { return $configPath }
+        Add-TestFunction Get-GlazeWmExecutable { return "C:\Program Files\glzr.io\GlazeWM\glazewm.exe" }
+        Add-TestFunction Enable-GlazeWmStartup { }
+        Add-TestFunction Test-GlazeWmRunning { return $true }
+        Add-TestFunction Invoke-GlazeWmReload { $script:reloads++ }
+        Add-TestFunction Start-GlazeWmProcess { $script:starts++ }
+
+        Set-GlazeWm
+
+        $script:reloads | Should -Be 1
+        $script:starts | Should -Be 0
+        [System.IO.File]::ReadAllText($configPath) | Should -Match "display_name: '10: brave'"
+    }
+
+    It "starts GlazeWM when it is installed and not running" {
+        $directory = Join-Path $TestDrive "glazewm-stopped"
+        $configPath = Join-Path $directory "config.yaml"
+        $script:reloads = 0
+        $script:starts = 0
+        Add-TestFunction Get-GlazeWmConfigPath { return $configPath }
+        Add-TestFunction Get-GlazeWmExecutable { return "C:\Program Files\glzr.io\GlazeWM\glazewm.exe" }
+        Add-TestFunction Enable-GlazeWmStartup { }
+        Add-TestFunction Test-GlazeWmRunning { return $false }
+        Add-TestFunction Invoke-GlazeWmReload { $script:reloads++ }
+        Add-TestFunction Start-GlazeWmProcess { $script:starts++ }
+
+        Set-GlazeWm
+
+        $script:reloads | Should -Be 0
+        $script:starts | Should -Be 1
+    }
+
+    It "writes the config when GlazeWM is not installed yet" {
+        $directory = Join-Path $TestDrive "glazewm-missing"
+        $configPath = Join-Path $directory "config.yaml"
+        $script:starts = 0
+        Add-TestFunction Get-GlazeWmConfigPath { return $configPath }
+        Add-TestFunction Get-GlazeWmExecutable { return $null }
+        Add-TestFunction Start-GlazeWmProcess { $script:starts++ }
+
+        Set-GlazeWm
+
+        $script:starts | Should -Be 0
+        [System.IO.File]::ReadAllText($configPath) | Should -Match "lwin\+1"
+    }
+}
