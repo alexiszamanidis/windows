@@ -29,6 +29,29 @@
                 min-width: 0;
             }
 
+            #right {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                white-space: nowrap;
+            }
+
+            #resources {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                color: #bfbfbf;
+            }
+
+            #resources span {
+                font-variant-numeric: tabular-nums;
+            }
+
+            #resources .label {
+                color: #6272a4;
+                margin-right: 4px;
+            }
+
             button {
                 border: 0;
                 background: #282a36;
@@ -50,25 +73,38 @@
 
             #clock {
                 color: #f8f8f2;
-                white-space: nowrap;
             }
         </style>
     </head>
     <body>
         <div id="bar">
             <div id="workspaces"></div>
-            <div id="clock"></div>
+            <div id="right">
+                <div id="resources">
+                    <span id="cpu"><span class="label">CPU</span>--</span>
+                    <span id="memory"><span class="label">MEM</span>--</span>
+                </div>
+                <div id="clock"></div>
+            </div>
         </div>
         <script type="module">
             import * as zebar from "https://esm.sh/zebar@3";
 
             const providers = zebar.createProviderGroup({
                 glazewm: { type: "glazewm" },
+                cpu: { type: "cpu", refreshInterval: 2000 },
+                memory: { type: "memory", refreshInterval: 2000 },
                 date: { type: "date", formatting: "EEE dd-MM HH:mm" },
             });
 
             const workspaces = document.getElementById("workspaces");
+            const cpuEl = document.getElementById("cpu");
+            const memoryEl = document.getElementById("memory");
             const clock = document.getElementById("clock");
+
+            function pct(value) {
+                return Number.isFinite(value) ? `${Math.round(value)}%` : "--";
+            }
 
             function render() {
                 const output = providers.outputMap;
@@ -96,6 +132,13 @@
                         workspaces.appendChild(button);
                     }
                 }
+
+                cpuEl.innerHTML = `<span class="label">CPU</span>${pct(
+                    output.cpu?.usage
+                )}`;
+                memoryEl.innerHTML = `<span class="label">MEM</span>${pct(
+                    output.memory?.usage
+                )}`;
                 clock.textContent = output.date?.formatted ?? "";
             }
 
