@@ -1072,6 +1072,49 @@ function Test-GlazeWmRunning {
     return $running
 }
 
+function Install-RepoFile {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Source,
+        [Parameter(Mandatory)]
+        [string]$Destination
+    )
+
+    $sourceFull = (Resolve-Path -LiteralPath $Source).Path
+    $root = if ($installerRoot -and (Test-Path -LiteralPath $installerRoot)) {
+        (Resolve-Path -LiteralPath $installerRoot).Path
+    } else {
+        $null
+    }
+    $rootPrefix = if ($root) { $root.TrimEnd('\') + '\' } else { $null }
+    # A checkout has a stable path, so the deployed file can point at it.
+    # A downloaded copy lives in TEMP and is replaced on the next run, so that install stays a copy.
+    $link = $rootPrefix -and $sourceFull.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+
+    if ($link) {
+        # Create the link beside the current file so a privilege failure leaves the existing config in place.
+        $linkPath = "$Destination.link-new"
+        if (Test-Path -LiteralPath $linkPath) {
+            Remove-Item -LiteralPath $linkPath -Force
+        }
+        try {
+            New-Item -ItemType SymbolicLink -Path $linkPath -Target $sourceFull | Out-Null
+        } catch {
+            if (Test-Path -LiteralPath $linkPath) {
+                Remove-Item -LiteralPath $linkPath -Force
+            }
+            throw
+        }
+        if (Test-Path -LiteralPath $Destination) {
+            Remove-Item -LiteralPath $Destination -Force
+        }
+        Move-Item -LiteralPath $linkPath -Destination $Destination
+        return
+    }
+
+    Copy-Item -LiteralPath $sourceFull -Destination $Destination -Force
+}
+
 function Install-GlazeWmConfig {
     [CmdletBinding(SupportsShouldProcess)]
     param()
@@ -1103,9 +1146,9 @@ function Install-GlazeWmConfig {
     }
 
     New-Item -ItemType Directory -Path $configDirectory -Force | Out-Null
-    Copy-Item -LiteralPath $sourcePath -Destination $configPath -Force
-    Copy-Item -LiteralPath $chromeStartupSource -Destination (Join-Path $configDirectory "chrome-startup.ps1") -Force
-    Write-Information "GlazeWM config written."
+    Install-RepoFile -Source $sourcePath -Destination $configPath
+    Install-RepoFile -Source $chromeStartupSource -Destination (Join-Path $configDirectory "chrome-startup.ps1")
+    Write-Information "GlazeWM config installed."
 }
 
 function Enable-GlazeWmStartup {

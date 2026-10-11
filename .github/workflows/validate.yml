@@ -330,6 +330,8 @@ jobs:
           }
           [System.IO.File]::WriteAllText($inputLeapConfig, "sentinel")
           [System.IO.File]::WriteAllText($flowSettings, "sentinel")
+          # A local install links this path at the repo file. Remove the link before writing the sentinel.
+          Remove-Item -LiteralPath $glazeConfig -Force
           [System.IO.File]::WriteAllText($glazeConfig, "sentinel")
           [System.IO.File]::WriteAllText($zebarSettings, "sentinel")
           & ./install.ps1 Packages

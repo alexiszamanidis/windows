@@ -391,7 +391,13 @@ Describe "GlazeWM" {
         $config | Should -Match "display_name: '1: chrome'"
         $config | Should -Match "move --workspace 2"
         $config | Should -Match "chrome-startup\.ps1"
-        Test-Path -LiteralPath (Join-Path $directory "chrome-startup.ps1") | Should -BeTrue
+        $linkedConfig = Get-Item -LiteralPath $configPath
+        $linkedConfig.LinkType | Should -Be "SymbolicLink"
+        @($linkedConfig.Target)[0] | Should -Be (Resolve-Path ./glazewm.yaml).Path
+        $startupPath = Join-Path $directory "chrome-startup.ps1"
+        $linkedStartup = Get-Item -LiteralPath $startupPath
+        $linkedStartup.LinkType | Should -Be "SymbolicLink"
+        @($linkedStartup.Target)[0] | Should -Be (Resolve-Path ./chrome-startup.ps1).Path
         Get-ItemPropertyValue -LiteralPath $runPath -Name "GlazeWM" | Should -Be '"C:\Program Files\glzr.io\GlazeWM\glazewm.exe"'
     }
 

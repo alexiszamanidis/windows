@@ -101,33 +101,34 @@ window_rules:
         window_class: { regex: 'Chrome_WidgetWin_1' }
 
   # Chrome profiles are placed by chrome-startup.ps1 (GlazeWM cannot tell profiles apart).
-  - commands: ['move --workspace 2']
+  # Pair `move` with `focus` so opening the app also switches to its workspace.
+  - commands: ['move --workspace 2', 'focus --workspace 2']
     match:
       - window_process: { regex: '(?i)^(code|cursor)$' }
 
-  - commands: ['move --workspace 3']
+  - commands: ['move --workspace 3', 'focus --workspace 3']
     match:
       - window_process: { regex: '(?i)^(windowsterminal|powershell|pwsh|cmd)$' }
 
-  - commands: ['move --workspace 4']
+  - commands: ['move --workspace 4', 'focus --workspace 4']
     match:
       - window_process: { regex: '(?i)^(outlook|olk)$' }
 
-  - commands: ['move --workspace 5']
+  - commands: ['move --workspace 5', 'focus --workspace 5']
     match:
       - window_process: { regex: '(?i)^slack$' }
       - window_process: { regex: '(?i)^discord$' }
 
-  - commands: ['move --workspace 6']
+  - commands: ['move --workspace 6', 'focus --workspace 6']
     match:
       - window_process: { regex: '(?i)^chrome$' }
         window_title: { regex: '(?i)excalidraw' }
 
-  - commands: ['move --workspace 7']
+  - commands: ['move --workspace 7', 'focus --workspace 7']
     match:
       - window_process: { regex: '(?i)^forti' }
 
-  - commands: ['move --workspace 9']
+  - commands: ['move --workspace 9', 'focus --workspace 9']
     match:
       - window_process: { regex: '(?i)^spotify$' }
 
