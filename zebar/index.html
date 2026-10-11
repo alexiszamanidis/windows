@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html,
+      body,
+      #bar {
+        margin: 0;
+        height: 100%;
+        background: #282a36;
+        color: #f8f8f2;
+        font-family: "Segoe UI", sans-serif;
+        font-size: 13px;
+      }
+
+      #bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 8px;
+        box-sizing: border-box;
+      }
+
+      #workspaces {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        min-width: 0;
+      }
+
+      button {
+        border: 0;
+        background: #282a36;
+        color: #bfbfbf;
+        padding: 4px 10px;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      button.displayed {
+        background: #44475a;
+        color: #f8f8f2;
+      }
+
+      button.focused {
+        background: #6272a4;
+        color: #f8f8f2;
+      }
+
+      #clock {
+        color: #f8f8f2;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="bar">
+      <div id="workspaces"></div>
+      <div id="clock"></div>
+    </div>
+    <script type="module">
+      import * as zebar from "https://esm.sh/zebar@3";
+
+      const providers = zebar.createProviderGroup({
+        glazewm: { type: "glazewm" },
+        date: { type: "date", formatting: "EEE dd-MM HH:mm" },
+      });
+
+      const workspaces = document.getElementById("workspaces");
+      const clock = document.getElementById("clock");
+
+      function render() {
+        const output = providers.outputMap;
+        const wm = output.glazewm;
+        workspaces.replaceChildren();
+        if (wm) {
+          for (const workspace of wm.currentWorkspaces) {
+            const button = document.createElement("button");
+            const focused = wm.focusedWorkspace?.name === workspace.name;
+            const displayed = wm.displayedWorkspace?.name === workspace.name;
+            button.className = focused ? "focused" : displayed ? "displayed" : "";
+            button.textContent = workspace.displayName ?? workspace.name;
+            button.addEventListener("click", () => {
+              wm.runCommand(`focus --workspace ${workspace.name}`);
+            });
+            workspaces.appendChild(button);
+          }
+        }
+        clock.textContent = output.date?.formatted ?? "";
+      }
+
+      providers.onOutput(render);
+      render();
+    </script>
+  </body>
+</html>

@@ -284,6 +284,9 @@ Describe "GlazeWM" {
         $config | Should -Match "display_name: '10: brave'"
         $config | Should -Match "focus --workspace 10"
         $config | Should -Match "shell-exec wt"
+        $config | Should -Match "shell-exec zebar"
+        $config | Should -Match "top: '40px'"
+        $config | Should -Match "equals: 'zebar'"
         $config | Should -Match "\['lwin\+enter'\]"
         $config | Should -Not -Match "'lwin\+p'"
         $config | Should -Not -Match "'lwin\+l'"
@@ -314,8 +317,10 @@ Describe "GlazeWM" {
         $script:starts = 0
         Add-TestFunction Get-GlazeWmConfigPath { return $configPath }
         Add-TestFunction Get-GlazeWmExecutable { return "C:\Program Files\glzr.io\GlazeWM\glazewm.exe" }
+        Add-TestFunction Install-ZebarWorkspaceBar { }
         Add-TestFunction Enable-GlazeWmStartup { }
         Add-TestFunction Test-GlazeWmRunning { return $true }
+        Add-TestFunction Start-ZebarBar { }
         Add-TestFunction Invoke-GlazeWmReload { $script:reloads++ }
         Add-TestFunction Start-GlazeWmProcess { $script:starts++ }
 
@@ -333,6 +338,8 @@ Describe "GlazeWM" {
         $script:starts = 0
         Add-TestFunction Get-GlazeWmConfigPath { return $configPath }
         Add-TestFunction Get-GlazeWmExecutable { return "C:\Program Files\glzr.io\GlazeWM\glazewm.exe" }
+        Add-TestFunction Install-ZebarWorkspaceBar { }
+        Add-TestFunction Stop-ZebarBar { }
         Add-TestFunction Enable-GlazeWmStartup { }
         Add-TestFunction Test-GlazeWmRunning { return $false }
         Add-TestFunction Invoke-GlazeWmReload { $script:reloads++ }
@@ -350,11 +357,39 @@ Describe "GlazeWM" {
         $script:starts = 0
         Add-TestFunction Get-GlazeWmConfigPath { return $configPath }
         Add-TestFunction Get-GlazeWmExecutable { return $null }
+        Add-TestFunction Install-ZebarWorkspaceBar { }
         Add-TestFunction Start-GlazeWmProcess { $script:starts++ }
 
         Set-GlazeWm
 
         $script:starts | Should -Be 0
         [System.IO.File]::ReadAllText($configPath) | Should -Match "lwin\+1"
+    }
+
+    It "installs the workspace bar and keeps other Zebar widgets" {
+        $directory = Join-Path $TestDrive "zebar"
+        $utf8 = [System.Text.UTF8Encoding]::new($false)
+        New-Item -ItemType Directory -Path $directory | Out-Null
+        [System.IO.File]::WriteAllText(
+            (Join-Path $directory "settings.json"),
+            '{"startupConfigs": [{"pack": "starter", "widget": "vanilla", "preset": "default"}]}',
+            $utf8
+        )
+        Add-TestFunction Get-ZebarConfigDirectory { return $directory }
+
+        Install-ZebarWorkspaceBar
+
+        $pack = Join-Path $directory "workspaces\zpack.json"
+        Test-Path -LiteralPath $pack | Should -BeTrue
+        [System.IO.File]::ReadAllText($pack) | Should -Match '"includeFiles": \["\*\.html"\]'
+        [System.IO.File]::ReadAllText((Join-Path $directory "workspaces\index.html")) | Should -Match "currentWorkspaces"
+        $settings = [System.IO.File]::ReadAllText((Join-Path $directory "settings.json"))
+        $settings | Should -Match '"pack": "workspaces"'
+        $settings | Should -Match '"widget": "vanilla"'
+    }
+
+    It "leaves an existing workspace bar entry in place" {
+        $json = '{"startupConfigs": [{"pack": "workspaces", "widget": "bar", "preset": "default"}]}'
+        Add-ZebarStartupConfig -Json $json | Should -Be $json
     }
 }

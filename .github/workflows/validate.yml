@@ -202,8 +202,17 @@ jobs:
             throw "GlazeWM config was not deployed."
           }
           $glazeText = [System.IO.File]::ReadAllText($glazeConfig)
-          if ($glazeText -notmatch "display_name: '1: chrome'" -or $glazeText -notmatch "display_name: '10: brave'" -or $glazeText -notmatch "shell-exec wt") {
+          if ($glazeText -notmatch "display_name: '1: chrome'" -or $glazeText -notmatch "display_name: '10: brave'" -or $glazeText -notmatch "shell-exec wt" -or $glazeText -notmatch "shell-exec zebar" -or $glazeText -notmatch "top: '40px'") {
             throw "GlazeWM config does not keep the i3 workspaces."
+          }
+          $zebarSettings = Join-Path $env:USERPROFILE ".glzr\zebar\settings.json"
+          $zebarPack = Join-Path $env:USERPROFILE ".glzr\zebar\workspaces\index.html"
+          if (-not (Test-Path -LiteralPath $zebarSettings) -or -not (Test-Path -LiteralPath $zebarPack)) {
+            throw "The workspace bar was not installed."
+          }
+          $zebarText = [System.IO.File]::ReadAllText($zebarSettings)
+          if ($zebarText -notmatch '"pack": "workspaces"') {
+            throw "Zebar was not set to open the workspace bar."
           }
           if ($glazeText -match "'lwin\+p'" -or $glazeText -match "'lwin\+l'") {
             throw "GlazeWM config binds a shortcut reserved for Flow Launcher or the Windows lock screen."
@@ -305,6 +314,7 @@ jobs:
           [System.IO.File]::WriteAllText($inputLeapConfig, "sentinel")
           [System.IO.File]::WriteAllText($flowSettings, "sentinel")
           [System.IO.File]::WriteAllText($glazeConfig, "sentinel")
+          [System.IO.File]::WriteAllText($zebarSettings, "sentinel")
           & ./install.ps1 Packages
           if ($global:wslCalls.Count -ne 0) {
             throw "The Packages task invoked WSL."
@@ -324,6 +334,9 @@ jobs:
           }
           if ([System.IO.File]::ReadAllText($glazeConfig) -ne "sentinel") {
             throw "The Packages task changed the GlazeWM config."
+          }
+          if ([System.IO.File]::ReadAllText($zebarSettings) -ne "sentinel") {
+            throw "The Packages task changed the workspace bar."
           }
 
       - name: Verify packages exist in WinGet

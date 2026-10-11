@@ -884,6 +884,126 @@ function Start-GlazeWmProcess {
     Start-Process -FilePath "cmd.exe" -WindowStyle Hidden -ArgumentList "/c start `"`" `"$Executable`""
 }
 
+function Get-ZebarConfigDirectory {
+    return Join-Path $env:USERPROFILE ".glzr\zebar"
+}
+
+function Get-ZebarExecutable {
+    $candidates = @(
+        (Join-Path $env:ProgramFiles "glzr.io\Zebar\zebar.exe")
+        (Join-Path $env:ProgramFiles "glzr.io\zebar.exe")
+    )
+    $programFilesX86 = ${env:ProgramFiles(x86)}
+    if ($programFilesX86) {
+        $candidates += Join-Path $programFilesX86 "glzr.io\Zebar\zebar.exe"
+    }
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
+        }
+    }
+
+    $command = Get-Command -Name "zebar" -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($command) {
+        return $command.Source
+    }
+
+    return $null
+}
+
+function Add-ZebarStartupConfig {
+    param(
+        [string]$Json
+    )
+
+    if ($Json -match '"pack"\s*:\s*"workspaces"') {
+        return $Json
+    }
+
+    $entry = '{"pack": "workspaces", "widget": "bar", "preset": "default"}'
+    $match = [regex]::new('"startupConfigs"\s*:\s*\[').Match($Json)
+    if (-not $match.Success) {
+        return "{`r`n    `"startupConfigs`": [$entry]`r`n}`r`n"
+    }
+
+    $tail = $Json.Substring($match.Index + $match.Length).TrimStart()
+    $insertion = if ($tail.StartsWith("]")) { $match.Value + $entry } else { $match.Value + $entry + "," }
+    return $Json.Substring(0, $match.Index) + $insertion + $Json.Substring($match.Index + $match.Length)
+}
+
+function Install-ZebarWorkspaceBar {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    $directory = Get-ZebarConfigDirectory
+    $packDirectory = Join-Path $directory "workspaces"
+    if (-not $PSCmdlet.ShouldProcess($packDirectory, "Install the workspace bar")) {
+        return
+    }
+
+    $sourceDirectory = if ($installerRoot) {
+        Join-Path $installerRoot "zebar"
+    } else {
+        $null
+    }
+    if (-not ($sourceDirectory -and (Test-Path -LiteralPath (Join-Path $sourceDirectory "zpack.json")))) {
+        $sourceDirectory = Join-Path $env:TEMP "windows-zebar"
+        New-Item -ItemType Directory -Path $sourceDirectory -Force | Out-Null
+        Invoke-WebRequest -Uri "$repoRawBase/$repoRef/zebar/zpack.json" -OutFile (Join-Path $sourceDirectory "zpack.json") -UseBasicParsing
+        Invoke-WebRequest -Uri "$repoRawBase/$repoRef/zebar/index.html" -OutFile (Join-Path $sourceDirectory "index.html") -UseBasicParsing
+    }
+
+    New-Item -ItemType Directory -Path $packDirectory -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $sourceDirectory "zpack.json") -Destination (Join-Path $packDirectory "zpack.json") -Force
+    Copy-Item -LiteralPath (Join-Path $sourceDirectory "index.html") -Destination (Join-Path $packDirectory "index.html") -Force
+
+    $settingsPath = Join-Path $directory "settings.json"
+    if (Test-Path -LiteralPath $settingsPath) {
+        $json = [System.IO.File]::ReadAllText($settingsPath)
+    } else {
+        $json = "{`"startupConfigs`": []}"
+    }
+
+    $json = Add-ZebarStartupConfig -Json $json
+    $utf8 = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($settingsPath, $json, $utf8)
+    Write-Information "Workspace bar installed."
+}
+
+function Stop-ZebarBar {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    if (-not $PSCmdlet.ShouldProcess("zebar", "Stop")) {
+        return
+    }
+
+    $previousErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = "SilentlyContinue"
+    Get-Process -Name "zebar" | Stop-Process -Force
+    $ErrorActionPreference = $previousErrorAction
+}
+
+function Start-ZebarBar {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    $executable = Get-ZebarExecutable
+    if (-not $executable) {
+        Write-Information "Zebar is not installed yet, so the workspace bar was not started."
+        return
+    }
+
+    if (-not $PSCmdlet.ShouldProcess($executable, "Start")) {
+        return
+    }
+
+    Stop-ZebarBar
+    Start-Process -FilePath $executable
+    Write-Information "Workspace bar started."
+}
+
 function Set-GlazeWm {
     [CmdletBinding(SupportsShouldProcess)]
     param()
@@ -893,6 +1013,7 @@ function Set-GlazeWm {
     }
 
     Install-GlazeWmConfig
+    Install-ZebarWorkspaceBar
     $executable = Get-GlazeWmExecutable
     if (-not $executable) {
         Write-Information "GlazeWM is not installed yet, so it was not started."
@@ -902,9 +1023,11 @@ function Set-GlazeWm {
     Enable-GlazeWmStartup -Executable $executable
     if (Test-GlazeWmRunning) {
         Invoke-GlazeWmReload
+        Start-ZebarBar
         return
     }
 
+    Stop-ZebarBar
     Start-GlazeWmProcess -Executable $executable
 }
 

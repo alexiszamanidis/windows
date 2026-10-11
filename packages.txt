@@ -18,6 +18,7 @@ Microsoft.VisualStudioCode
 
 # Desktop
 glzr-io.glazewm
+glzr-io.zebar
 Flow-Launcher.Flow-Launcher
 
 # Utilities
