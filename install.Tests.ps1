@@ -173,6 +173,9 @@ Describe "Flow Launcher hotkey" {
             [ref]$parseErrors
         )
         $parseErrors.Count | Should -Be 0
+        $capture = Get-Content ./flow-launcher-hotkey.ps1 -Raw
+        $capture | Should -Match "SearchWindows"
+        $capture | Should -Match "QueryTextBox"
     }
 
     It "adds Win+P without dropping other disabled shortcuts" {
@@ -215,7 +218,72 @@ Describe "Flow Launcher hotkey" {
         $json | Should -Match '"Hotkey": "Win \+ P"'
         $json | Should -Match '"Theme": "Dark"'
         $json | Should -Match '"StartFlowLauncherOnSystemStartup": true'
+        $json | Should -Match '"Hotkey": "Win \+ Shift \+ P"'
+        $json | Should -Match '"ActionKeyword": "w "'
         $json | Should -Not -Match "Alt"
+    }
+
+    It "adds the open-window hotkey beside an existing custom hotkey" {
+        $directory = Join-Path $TestDrive "flow-custom"
+        New-Item -ItemType Directory -Path $directory | Out-Null
+        $settingsPath = Join-Path $directory "Settings.json"
+        $utf8 = [System.Text.UTF8Encoding]::new($false)
+        $existing = '{"Hotkey": "Alt + Space", "CustomPluginHotkeys": [{"Hotkey": "Ctrl + Alt + K", "ActionKeyword": "kill "}]}'
+        [System.IO.File]::WriteAllText($settingsPath, $existing, $utf8)
+        Add-TestFunction Get-FlowLauncherSettingsPath { return $settingsPath }
+
+        Set-FlowLauncherSetting
+        Set-FlowLauncherSetting
+
+        $json = [System.IO.File]::ReadAllText($settingsPath)
+        $json | Should -Match '"Hotkey": "Win \+ P"'
+        $json | Should -Match '"Hotkey": "Ctrl \+ Alt \+ K"'
+        $json | Should -Match '"Hotkey": "Win \+ Shift \+ P"'
+        ([regex]::Matches($json, "Win \+ Shift \+ P")).Count | Should -Be 1
+    }
+
+    It "keeps a Window Walker keyword of w" {
+        $directory = Join-Path $TestDrive "walker"
+        New-Item -ItemType Directory -Path $directory | Out-Null
+        $manifest = Join-Path $directory "plugin.json"
+        $utf8 = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($manifest, '{"ActionKeywords": [ "*" ]}', $utf8)
+
+        Set-FlowLauncherWindowWalkerKeyword -ManifestPath $manifest
+
+        [System.IO.File]::ReadAllText($manifest) | Should -Be '{"ActionKeywords": ["w"]}'
+    }
+
+    It "includes cloaked windows from other workspaces" {
+        $directory = Join-Path $TestDrive "walker-settings"
+        New-Item -ItemType Directory -Path $directory | Out-Null
+        $settingsPath = Join-Path $directory "Settings.json"
+        $utf8 = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($settingsPath, '{"SearchCloakedWindows": false, "EnableQuickAccessHotKey": true}', $utf8)
+        Add-TestFunction Get-FlowLauncherWindowWalkerSettingsPath { return $settingsPath }
+
+        Set-FlowLauncherWindowWalkerSearch
+
+        $json = [System.IO.File]::ReadAllText($settingsPath)
+        $json | Should -Match '"SearchCloakedWindows": true'
+        $json | Should -Match '"SearchWindowsAcrossAllVDesktop": true'
+        $json | Should -Match '"EnableQuickAccessHotKey": true'
+    }
+
+    It "removes the open-window hotkey after Flow rewrites the plus sign" {
+        $saved = @"
+{
+  "CustomPluginHotkeys": [
+    {
+      "Hotkey": "Win \u002B Shift \u002B P",
+      "ActionKeyword": "w "
+    }
+  ]
+}
+"@
+        $json = Remove-FlowLauncherWindowHotkey -Json $saved
+        $json | Should -Match '"CustomPluginHotkeys": \[\]'
+        $json | Should -Not -Match "Shift"
     }
 
     It "starts Flow Launcher when Windows releases Win+P" {
@@ -230,6 +298,7 @@ Describe "Flow Launcher hotkey" {
         Add-TestFunction Restart-ExplorerShell { }
         Add-TestFunction Disable-WindowsProjectHotkey { }
         Add-TestFunction Test-FlowLauncherHotkeyAvailable { return $true }
+        Add-TestFunction Install-FlowLauncherWindowWalker { }
         Add-TestFunction Install-FlowLauncherHotkeyCapture { $script:captures++ }
         Add-TestFunction Remove-FlowLauncherHotkeyCapture { $script:captureRemovals++ }
         Add-TestFunction Start-FlowLauncher { $script:flowStarts++ }
@@ -254,6 +323,7 @@ Describe "Flow Launcher hotkey" {
         Add-TestFunction Restart-ExplorerShell { }
         Add-TestFunction Disable-WindowsProjectHotkey { }
         Add-TestFunction Test-FlowLauncherHotkeyAvailable { return $false }
+        Add-TestFunction Install-FlowLauncherWindowWalker { }
         Add-TestFunction Install-FlowLauncherHotkeyCapture { $script:captures++ }
         Add-TestFunction Remove-FlowLauncherHotkeyCapture { $script:captureRemovals++ }
         Add-TestFunction Start-FlowLauncher { $script:flowStarts++ }

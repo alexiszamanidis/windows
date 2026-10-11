@@ -191,6 +191,33 @@ function Get-DesktopMonitorCount {
     return 1
 }
 
+function Restart-ExplorerShell {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    if (-not $PSCmdlet.ShouldProcess("explorer", "Restart the shell")) {
+        return
+    }
+
+    $previousErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = "SilentlyContinue"
+    Get-Process -Name "explorer" | Stop-Process -Force
+    $ErrorActionPreference = $previousErrorAction
+
+    $deadline = (Get-Date).AddSeconds(10)
+    do {
+        Start-Sleep -Milliseconds 200
+        $explorer = Get-Process -Name "explorer" -ErrorAction SilentlyContinue
+    } while (-not $explorer -and (Get-Date) -lt $deadline)
+
+    if (-not $explorer) {
+        Start-Process -FilePath "explorer.exe"
+    }
+
+    # Hotkeys are registered after the shell window exists.
+    Start-Sleep -Seconds 2
+}
+
 function Enable-TaskbarAutoHide {
     [CmdletBinding(SupportsShouldProcess)]
     param()
@@ -562,33 +589,6 @@ function Disable-WindowsProjectHotkey {
     Write-Information "Windows project shortcut is disabled."
 }
 
-function Restart-ExplorerShell {
-    [CmdletBinding(SupportsShouldProcess)]
-    param()
-
-    if (-not $PSCmdlet.ShouldProcess("explorer", "Restart the shell")) {
-        return
-    }
-
-    $previousErrorAction = $ErrorActionPreference
-    $ErrorActionPreference = "SilentlyContinue"
-    Get-Process -Name "explorer" | Stop-Process -Force
-    $ErrorActionPreference = $previousErrorAction
-
-    $deadline = (Get-Date).AddSeconds(10)
-    do {
-        Start-Sleep -Milliseconds 200
-        $explorer = Get-Process -Name "explorer" -ErrorAction SilentlyContinue
-    } while (-not $explorer -and (Get-Date) -lt $deadline)
-
-    if (-not $explorer) {
-        Start-Process -FilePath "explorer.exe"
-    }
-
-    # Hotkeys are registered after the shell window exists.
-    Start-Sleep -Seconds 2
-}
-
 function Get-JsonWithProperty {
     param(
         [string]$Json,
@@ -637,9 +637,231 @@ function Set-FlowLauncherSetting {
 
     $json = Get-JsonWithProperty -Json $json -Name "Hotkey" -EncodedValue '"Win + P"'
     $json = Get-JsonWithProperty -Json $json -Name "StartFlowLauncherOnSystemStartup" -EncodedValue "true"
+    $json = Add-FlowLauncherWindowHotkey -Json $json
     $utf8 = [System.Text.UTF8Encoding]::new($false)
     [System.IO.File]::WriteAllText($settingsPath, $json, $utf8)
-    Write-Information "Flow Launcher hotkey is Win+P."
+    Write-Information "Flow Launcher hotkey is Win+P. Win+Shift+P searches open windows."
+}
+
+function Add-FlowLauncherWindowHotkey {
+    param(
+        [string]$Json
+    )
+
+    # Used when Flow can register hotkeys. The capture helper removes it and handles Win+Shift+P itself.
+    $hotkey = '"Hotkey": "Win + Shift + P"'
+    $escapedHotkey = '"Hotkey": "Win \u002B Shift \u002B P"'
+    if ($Json.Contains($hotkey) -or $Json.Contains($escapedHotkey)) {
+        return $Json
+    }
+
+    $entry = "{`r`n      `"Hotkey`": `"Win + Shift + P`",`r`n      `"ActionKeyword`": `"w `"`r`n    }"
+    $name = "CustomPluginHotkeys"
+    $emptyPattern = '"' + [regex]::Escape($name) + '"\s*:\s*\[\s*\]'
+    if ([regex]::IsMatch($Json, $emptyPattern)) {
+        $replacement = '"' + $name + '": [' + "`r`n    " + $entry + "`r`n  ]"
+        return ([regex]::new($emptyPattern)).Replace($Json, $replacement, 1)
+    }
+
+    $startPattern = '"' + [regex]::Escape($name) + '"\s*:\s*\['
+    $start = [regex]::Match($Json, $startPattern)
+    if ($start.Success) {
+        return $Json.Insert($start.Index + $start.Length, "`r`n    $entry,")
+    }
+
+    $encoded = "[`r`n    $entry`r`n  ]"
+    return Get-JsonWithProperty -Json $Json -Name $name -EncodedValue $encoded
+}
+
+function Remove-FlowLauncherWindowHotkey {
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [string]$Json
+    )
+
+    if (-not $PSCmdlet.ShouldProcess("Flow Launcher settings", "Remove the Win+Shift+P hotkey")) {
+        return $Json
+    }
+
+    $markers = @(
+        '"Hotkey": "Win + Shift + P"',
+        '"Hotkey": "Win \u002B Shift \u002B P"'
+    )
+    $marker = $null
+    foreach ($candidate in $markers) {
+        if ($Json.Contains($candidate)) {
+            $marker = $candidate
+            break
+        }
+    }
+    if (-not $marker) {
+        return $Json
+    }
+
+    $hotkeyAt = $Json.IndexOf($marker)
+    $objectStart = $Json.LastIndexOf("{", $hotkeyAt)
+    $objectEnd = $Json.IndexOf("}", $hotkeyAt)
+    if ($objectStart -lt 0 -or $objectEnd -lt 0) {
+        return $Json
+    }
+
+    $before = $Json.Substring(0, $objectStart)
+    $after = $Json.Substring($objectEnd + 1)
+    if ($after -match '^\s*,') {
+        $after = [regex]::Replace($after, '^\s*,', '', 1)
+    } elseif ($before -match ',\s*$') {
+        $before = [regex]::Replace($before, ',\s*$', '')
+    }
+
+    $updated = $before + $after
+    return [regex]::Replace($updated, '"CustomPluginHotkeys"\s*:\s*\[\s*\]', '"CustomPluginHotkeys": []', 1)
+}
+
+function Set-FlowLauncherWindowWalkerKeyword {
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [string]$ManifestPath
+    )
+
+    if (-not $PSCmdlet.ShouldProcess($ManifestPath, "Search open windows with w")) {
+        return
+    }
+
+    $json = [System.IO.File]::ReadAllText($ManifestPath)
+    $arrayPattern = '"ActionKeywords"\s*:\s*\[[^\]]*\]'
+    if ([regex]::IsMatch($json, $arrayPattern)) {
+        $json = ([regex]::new($arrayPattern)).Replace($json, '"ActionKeywords": ["w"]', 1)
+    } else {
+        $json = Get-JsonWithProperty -Json $json -Name "ActionKeyword" -EncodedValue '"w"'
+    }
+
+    $utf8 = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($ManifestPath, $json, $utf8)
+}
+
+function Get-FlowLauncherWindowWalkerSettingsPath {
+    $plugins = Join-Path (Join-Path $env:APPDATA "FlowLauncher\Settings") "Plugins"
+    return Join-Path (Join-Path $plugins "Flow.Plugin.WindowWalker") "Settings.json"
+}
+
+function Set-FlowLauncherWindowWalkerSearch {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    $settingsPath = Get-FlowLauncherWindowWalkerSettingsPath
+    if (-not $PSCmdlet.ShouldProcess($settingsPath, "Search windows on every workspace")) {
+        return
+    }
+
+    New-Item -ItemType Directory -Path (Split-Path -Parent $settingsPath) -Force | Out-Null
+    if (Test-Path -LiteralPath $settingsPath) {
+        $json = [System.IO.File]::ReadAllText($settingsPath)
+    } else {
+        $json = "{}"
+    }
+
+    # GlazeWM cloaks windows on other workspaces. Window Walker skips those unless this is on.
+    $json = Get-JsonWithProperty -Json $json -Name "SearchCloakedWindows" -EncodedValue "true"
+    $json = Get-JsonWithProperty -Json $json -Name "SearchWindowsAcrossAllVDesktop" -EncodedValue "true"
+    $utf8 = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($settingsPath, $json, $utf8)
+}
+
+function Update-FlowLauncherWindowWalkerTaskList {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    $dll = Join-Path (Join-Path (Join-Path $env:APPDATA "FlowLauncher") "Plugins") "Flow.Plugin.WindowWalker\Flow.Plugin.WindowWalker.dll"
+    if (-not (Test-Path -LiteralPath $dll)) {
+        return
+    }
+    if (-not $PSCmdlet.ShouldProcess($dll, "List windows hidden from the taskbar")) {
+        return
+    }
+
+    $flowRoot = Join-Path $env:LOCALAPPDATA "FlowLauncher"
+    $cecil = $null
+    if (Test-Path -LiteralPath $flowRoot) {
+        $cecil = Get-ChildItem -LiteralPath $flowRoot -Filter "Mono.Cecil.dll" -Recurse -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+    }
+    if (-not $cecil) {
+        Write-Information "Flow Launcher is not installed yet, so windows hidden from the taskbar were left out of the search."
+        return
+    }
+
+    if (-not ([System.Management.Automation.PSTypeName]"Mono.Cecil.AssemblyDefinition").Type) {
+        Add-Type -Path $cecil.FullName
+    }
+
+    $parameters = New-Object Mono.Cecil.ReaderParameters
+    $parameters.ReadSymbols = $false
+    $assembly = [Mono.Cecil.AssemblyDefinition]::ReadAssembly($dll, $parameters)
+    $patched = "$dll.patched"
+    try {
+        $window = $assembly.MainModule.Types | Where-Object { $_.FullName -eq "Flow.Plugin.WindowWalker.Components.Window" }
+        $getter = $window.Methods | Where-Object { $_.Name -eq "get_TaskListDeleted" }
+        $instructions = @($getter.Body.Instructions)
+        $alreadyPatched = $instructions.Count -eq 2 -and
+            $instructions[0].OpCode.ToString() -eq "ldc.i4.0" -and
+            $instructions[1].OpCode.ToString() -eq "ret"
+        if ($alreadyPatched) {
+            return
+        }
+
+        $processor = $getter.Body.GetILProcessor()
+        foreach ($instruction in $instructions) {
+            $processor.Remove($instruction)
+        }
+        $processor.Append($processor.Create([Mono.Cecil.Cil.OpCodes]::Ldc_I4_0))
+        $processor.Append($processor.Create([Mono.Cecil.Cil.OpCodes]::Ret))
+
+        $writer = New-Object Mono.Cecil.WriterParameters
+        $writer.WriteSymbols = $false
+        $assembly.Write($patched, $writer)
+    } finally {
+        if ($assembly -and ($assembly -is [System.IDisposable])) {
+            $assembly.Dispose()
+        }
+    }
+
+    Move-Item -LiteralPath $patched -Destination $dll -Force
+}
+
+function Install-FlowLauncherWindowWalker {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    $destination = Join-Path (Join-Path (Join-Path $env:APPDATA "FlowLauncher") "Plugins") "Flow.Plugin.WindowWalker"
+    if (-not $PSCmdlet.ShouldProcess($destination, "Install Window Walker")) {
+        return
+    }
+
+    $dll = Join-Path $destination "Flow.Plugin.WindowWalker.dll"
+    if (-not (Test-Path -LiteralPath $dll)) {
+        $pluginsRoot = Split-Path -Parent $destination
+        New-Item -ItemType Directory -Path $pluginsRoot -Force | Out-Null
+        $zip = Join-Path ([System.IO.Path]::GetTempPath()) "WindowWalker-3.1.0.zip"
+        Invoke-WebRequest -Uri "https://github.com/taooceros/Flow.Plugin.WindowWalker/releases/download/v3.1.0/WindowWalker-3.1.0.zip" -OutFile $zip -UseBasicParsing
+        $extract = Join-Path ([System.IO.Path]::GetTempPath()) "WindowWalker-3.1.0"
+        if (Test-Path -LiteralPath $extract) {
+            Remove-Item -LiteralPath $extract -Recurse -Force
+        }
+        Expand-Archive -LiteralPath $zip -DestinationPath $extract -Force
+        $manifest = Get-ChildItem -LiteralPath $extract -Filter "plugin.json" -Recurse | Select-Object -First 1
+        if (-not $manifest) {
+            throw "Window Walker archive does not contain plugin.json."
+        }
+        if (Test-Path -LiteralPath $destination) {
+            Remove-Item -LiteralPath $destination -Recurse -Force
+        }
+        Copy-Item -LiteralPath $manifest.Directory.FullName -Destination $destination -Recurse
+    }
+
+    Set-FlowLauncherWindowWalkerKeyword -ManifestPath (Join-Path $destination "plugin.json")
+    Set-FlowLauncherWindowWalkerSearch
+    # GlazeWM removes other workspaces from the taskbar. Window Walker treats that as "not a window".
+    Update-FlowLauncherWindowWalkerTaskList
 }
 
 function Test-FlowLauncherHotkeyAvailable {
@@ -716,10 +938,34 @@ function Install-FlowLauncherHotkeyCapture {
     $runValue = "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$destination`""
     New-ItemProperty -Path $runPath -Name "FlowLauncherWinP" -PropertyType String -Value $runValue -Force | Out-Null
     Stop-FlowLauncherHotkeyCapture
+    # Flow cannot register Win+Shift+P while another window owns it, and it reports that on every launch.
+    Clear-FlowLauncherWindowHotkey
     Start-Process -FilePath "powershell.exe" -WindowStyle Hidden -ArgumentList @(
         "-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", $destination
     )
-    Write-Information "Win+P opens Flow Launcher when Windows keeps the project shortcut."
+    Write-Information "Win+P opens Flow Launcher when Windows keeps the project shortcut. Win+Shift+P searches open windows."
+}
+
+function Clear-FlowLauncherWindowHotkey {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    $settingsPath = Get-FlowLauncherSettingsPath
+    if (-not (Test-Path -LiteralPath $settingsPath)) {
+        return
+    }
+    if (-not $PSCmdlet.ShouldProcess($settingsPath, "Leave Win+Shift+P to the capture helper")) {
+        return
+    }
+
+    $json = [System.IO.File]::ReadAllText($settingsPath)
+    $updated = Remove-FlowLauncherWindowHotkey -Json $json
+    if ($updated -eq $json) {
+        return
+    }
+
+    $utf8 = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($settingsPath, $updated, $utf8)
 }
 
 function Remove-FlowLauncherHotkeyCapture {
@@ -765,6 +1011,7 @@ function Set-FlowLauncherHotkey {
     Disable-WindowsProjectHotkey
     Restart-ExplorerShell
     Set-FlowLauncherSetting
+    Install-FlowLauncherWindowWalker
     # Flow registers Win+P with RegisterHotKey. When Windows still owns that shortcut, registration fails
     # and Flow reports it on every launch, so a low-level hook opens Flow instead.
     if (Test-FlowLauncherHotkeyAvailable) {

@@ -1,4 +1,5 @@
 # Captures Win+P when Windows still owns the project shortcut, then shows or hides Flow Launcher.
+# Win+Shift+P opens Flow Launcher on the open-window search.
 $ErrorActionPreference = "Stop"
 
 $mutex = New-Object System.Threading.Mutex($false, "Local\WindowsSetupFlowLauncherHotkey")
@@ -14,12 +15,14 @@ if (-not $owned) {
 }
 
 if (-not ([System.Management.Automation.PSTypeName]"WindowsSetup.FlowHotkeyHook").Type) {
-    Add-Type -TypeDefinition @"
+    Add-Type -ReferencedAssemblies @("UIAutomationClient", "UIAutomationTypes") -TypeDefinition @"
 using System;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Windows.Automation;
+using System.Windows.Automation.Text;
 
 namespace WindowsSetup {
     public static class FlowHotkeyHook {
@@ -36,9 +39,12 @@ namespace WindowsSetup {
         private const int KeyeventfKeyup = 0x0002;
         private const int LlkfInjected = 0x10;
 
+        private const string WindowQuery = "w ";
+
         private static IntPtr hook;
         private static HookProc proc;
         private static int lastToggle;
+        private static int lastWindowSearch;
 
         private delegate IntPtr HookProc(int code, IntPtr wParam, IntPtr lParam);
 
@@ -111,9 +117,15 @@ namespace WindowsSetup {
                     KBDLLHOOKSTRUCT data = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
                     bool injected = (data.flags & (uint)LlkfInjected) != 0;
                     bool win = IsDown(VkLWin) || IsDown(VkRWin);
-                    bool otherModifier = IsDown(VkControl) || IsDown(VkMenu) || IsDown(VkShift);
-                    if (!injected && data.vkCode == (uint)VkP && win && !otherModifier) {
-                        Toggle();
+                    bool ctrl = IsDown(VkControl);
+                    bool alt = IsDown(VkMenu);
+                    bool shift = IsDown(VkShift);
+                    if (!injected && data.vkCode == (uint)VkP && win && !ctrl && !alt) {
+                        if (shift) {
+                            SearchWindows();
+                        } else {
+                            Toggle();
+                        }
                         return (IntPtr)1;
                     }
                 }
@@ -161,6 +173,92 @@ namespace WindowsSetup {
             }
 
             Process.Start(executable);
+        }
+
+        private static void SearchWindows() {
+            int now = Environment.TickCount;
+            int elapsed = unchecked(now - lastWindowSearch);
+            if (lastWindowSearch != 0 && elapsed >= 0 && elapsed < 400) {
+                return;
+            }
+            lastWindowSearch = now;
+
+            string executable = ResolveExecutable();
+            if (executable == null) {
+                return;
+            }
+
+            if (Process.GetProcessesByName("Flow.Launcher").Length == 0) {
+                Process.Start(executable);
+                ThreadPool.QueueUserWorkItem(delegate(object state) {
+                    try {
+                        for (int attempt = 0; attempt < 30; attempt++) {
+                            Thread.Sleep(100);
+                            if (Process.GetProcessesByName("Flow.Launcher").Length > 0) {
+                                break;
+                            }
+                        }
+                        Thread.Sleep(400);
+                        Process.Start(executable);
+                        SetWindowQuery();
+                    } catch {
+                    }
+                });
+                return;
+            }
+
+            if (!IsFlowWindowVisible()) {
+                Process.Start(executable);
+            }
+
+            ThreadPool.QueueUserWorkItem(delegate(object state) {
+                try {
+                    SetWindowQuery();
+                } catch {
+                }
+            });
+        }
+
+        private static bool IsFlowWindowVisible() {
+            AutomationElement window = AutomationElement.RootElement.FindFirst(
+                TreeScope.Children,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "FlowMainWindow"));
+            return window != null;
+        }
+
+        private static void SetWindowQuery() {
+            for (int attempt = 0; attempt < 30; attempt++) {
+                AutomationElement window = AutomationElement.RootElement.FindFirst(
+                    TreeScope.Children,
+                    new PropertyCondition(AutomationElement.AutomationIdProperty, "FlowMainWindow"));
+                if (window != null) {
+                    AutomationElement box = window.FindFirst(
+                        TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.AutomationIdProperty, "QueryTextBox"));
+                    if (box != null) {
+                        object pattern;
+                        if (box.TryGetCurrentPattern(ValuePattern.Pattern, out pattern)) {
+                            ((ValuePattern)pattern).SetValue(WindowQuery);
+                            MoveCaretToEnd(box);
+                            return;
+                        }
+                    }
+                }
+                Thread.Sleep(100);
+            }
+        }
+
+        private static void MoveCaretToEnd(AutomationElement box) {
+            object pattern;
+            if (!box.TryGetCurrentPattern(TextPattern.Pattern, out pattern)) {
+                return;
+            }
+
+            TextPattern text = (TextPattern)pattern;
+            TextPatternRange end = text.DocumentRange;
+            end.MoveEndpointByRange(TextPatternRangeEndpoint.Start, end, TextPatternRangeEndpoint.End);
+            end.Select();
+            box.SetFocus();
         }
 
         private static bool IsFlowForeground() {

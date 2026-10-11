@@ -192,6 +192,19 @@ jobs:
           if ($flowJson -notmatch '"StartFlowLauncherOnSystemStartup": true') {
             throw "Flow Launcher was not set to start at login."
           }
+          $flowHook = Join-Path $env:APPDATA "WindowsSetup\flow-launcher-hotkey.ps1"
+          if (Test-Path -LiteralPath $flowHook) {
+            $hookText = [System.IO.File]::ReadAllText($flowHook)
+            if ($hookText -notmatch "SearchWindows") {
+              throw "Win+Shift+P does not search open windows."
+            }
+          } elseif ($flowJson -notmatch '"Hotkey": "Win \+ Shift \+ P"' -or $flowJson -notmatch '"ActionKeyword": "w "') {
+            throw "Flow Launcher was not set to search open windows."
+          }
+          $walker = Join-Path $env:APPDATA "FlowLauncher\Plugins\Flow.Plugin.WindowWalker\plugin.json"
+          if (-not (Test-Path -LiteralPath $walker)) {
+            throw "Window Walker was not installed."
+          }
           $disabledHotkeys = (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced").DisabledHotkeys
           if ($disabledHotkeys.IndexOf("P") -lt 0) {
             throw "Win+P was not disabled. DisabledHotkeys is '$disabledHotkeys'."

@@ -29,7 +29,7 @@ The URL follows the repository default branch. The one-liner runs every task. Se
 -   Long paths in Windows and Git `core.longpaths`
 -   Git name, email, pull rebase, default branch and fetch prune. The credential helper is `manager`
 -   The WinGet packages in `packages.txt`
--   Flow Launcher opens with Win+P and starts at login. Windows is told to stop using that shortcut for the project screen. If Windows still takes Win+P, a login helper opens Flow Launcher instead
+-   Flow Launcher opens with Win+P and starts at login. Win+Shift+P searches open windows. Windows is told to stop using Win+P for the project screen. If Windows still takes Win+P, a login helper opens Flow Launcher instead
 -   GlazeWM follows the i3 config: the Windows key, the ten workspaces and the window assignments. A top bar lists the workspaces. Win+P stays with Flow Launcher. GlazeWM starts at login
 -   The Input Leap server layout. Desktop is on the left and the Linux client is on the right. The server starts at login
 -   WSL2 and one Ubuntu distro
