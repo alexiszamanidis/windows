@@ -46,4 +46,4 @@ The installer runs every task unless you name a subset. Separate names with a co
 .\install.ps1 DarkMode,Wallpaper,Explorer,LongPaths
 ```
 
-The task names are `DarkMode`, `Wallpaper`, `Explorer`, `LongPaths`, `Git`, `Packages`, `InputLeap`, `Wsl`, `Font` and `Terminal`. A file run takes that list as its first argument. The one-liner cannot take arguments, so set `WINDOWS_TASKS` before running it. Long paths and the Git identity are applied when Git is already installed.
+The task names are `DarkMode`, `Wallpaper`, `Explorer`, `LongPaths`, `Git`, `Packages`, `InputLeap`, `Wsl`, `Font` and `Terminal`. A file run takes that list as its first argument. A file run needs a process execution policy that allows unsigned scripts: `powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 Packages`. The one-liner cannot take arguments, so set `WINDOWS_TASKS` before running it. Long paths and the Git identity are applied when Git is already installed.
