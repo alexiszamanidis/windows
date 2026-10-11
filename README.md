@@ -41,7 +41,11 @@ The URL follows the repository default branch. The one-liner runs every task. Se
 
 ### Tasks
 
-The installer runs every task unless you name a subset. Separate names with a comma.
+The installer runs every task unless you name a subset. Separate names with a comma. List the names from the script:
+
+```
+Select-String -Path .\install.ps1 -Pattern '^\$knownTasks'
+```
 
 ```
 .\install.ps1 Packages
