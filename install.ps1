@@ -191,6 +191,33 @@ function Get-DesktopMonitorCount {
     return 1
 }
 
+function Enable-TaskbarAutoHide {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    $path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StuckRects3"
+    if (-not (Test-Path -LiteralPath $path)) {
+        Write-Information "Taskbar settings were not found, so auto-hide was not enabled."
+        return
+    }
+
+    if (-not $PSCmdlet.ShouldProcess($path, "Automatically hide the taskbar")) {
+        return
+    }
+
+    $settings = (Get-ItemProperty -LiteralPath $path -Name Settings).Settings
+    # Byte 8: 0x02 = always show, 0x03 = auto-hide.
+    if ($settings[8] -eq 3) {
+        Write-Information "The taskbar already hides until the pointer reaches the bottom."
+        return
+    }
+
+    $settings[8] = 3
+    Set-ItemProperty -LiteralPath $path -Name Settings -Value $settings
+    Restart-ExplorerShell
+    Write-Information "The taskbar hides until the pointer reaches the bottom."
+}
+
 function Set-ExplorerPreference {
     [CmdletBinding(SupportsShouldProcess)]
     param()
@@ -204,6 +231,7 @@ function Set-ExplorerPreference {
     New-ItemProperty -Path $explorerPath -Name "HideFileExt" -PropertyType DWord -Value 0 -Force | Out-Null
     New-ItemProperty -Path $explorerPath -Name "Hidden" -PropertyType DWord -Value 1 -Force | Out-Null
     Write-Information "File Explorer shows extensions and hidden files."
+    Enable-TaskbarAutoHide
 }
 
 function Get-GitCommand {
