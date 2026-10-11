@@ -806,6 +806,7 @@ function Install-GlazeWmConfig {
         return
     }
 
+    $configDirectory = Split-Path -Parent $configPath
     $sourcePath = if ($installerRoot) {
         Join-Path $installerRoot "glazewm.yaml"
     } else {
@@ -816,8 +817,19 @@ function Install-GlazeWmConfig {
         Invoke-WebRequest -Uri "$repoRawBase/$repoRef/glazewm.yaml" -OutFile $sourcePath -UseBasicParsing
     }
 
-    New-Item -ItemType Directory -Path (Split-Path -Parent $configPath) -Force | Out-Null
+    $chromeStartupSource = if ($installerRoot) {
+        Join-Path $installerRoot "chrome-startup.ps1"
+    } else {
+        $null
+    }
+    if (-not ($chromeStartupSource -and (Test-Path -LiteralPath $chromeStartupSource))) {
+        $chromeStartupSource = Join-Path $env:TEMP "windows-chrome-startup.ps1"
+        Invoke-WebRequest -Uri "$repoRawBase/$repoRef/chrome-startup.ps1" -OutFile $chromeStartupSource -UseBasicParsing
+    }
+
+    New-Item -ItemType Directory -Path $configDirectory -Force | Out-Null
     Copy-Item -LiteralPath $sourcePath -Destination $configPath -Force
+    Copy-Item -LiteralPath $chromeStartupSource -Destination (Join-Path $configDirectory "chrome-startup.ps1") -Force
     Write-Information "GlazeWM config written."
 }
 

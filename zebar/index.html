@@ -61,6 +61,11 @@
                 cursor: pointer;
             }
 
+            button.unread {
+                background: #ff5555;
+                color: #f8f8f2;
+            }
+
             button.displayed {
                 background: #44475a;
                 color: #f8f8f2;
@@ -102,8 +107,71 @@
             const memoryEl = document.getElementById("memory");
             const clock = document.getElementById("clock");
 
+            const unreadWorkspaces = new Set();
+            const previousWindowIdsByWorkspace = new Map();
+            let trackedWindows = false;
+
             function pct(value) {
                 return Number.isFinite(value) ? `${Math.round(value)}%` : "--";
+            }
+
+            function collectWindowIds(node, ids = []) {
+                if (!node) {
+                    return ids;
+                }
+                if (node.type === "window") {
+                    ids.push(node.id);
+                }
+                if (Array.isArray(node.children)) {
+                    for (const child of node.children) {
+                        collectWindowIds(child, ids);
+                    }
+                }
+                return ids;
+            }
+
+            function updateUnread(wm) {
+                const focusedName = wm.focusedWorkspace?.name;
+                if (focusedName) {
+                    unreadWorkspaces.delete(focusedName);
+                }
+
+                const seen = new Set();
+                for (const workspace of wm.allWorkspaces ?? []) {
+                    seen.add(workspace.name);
+                    const ids = new Set(collectWindowIds(workspace));
+                    const previous = previousWindowIdsByWorkspace.get(
+                        workspace.name
+                    );
+
+                    if (trackedWindows && previous) {
+                        for (const id of ids) {
+                            if (
+                                !previous.has(id) &&
+                                workspace.name !== focusedName
+                            ) {
+                                unreadWorkspaces.add(workspace.name);
+                            }
+                        }
+                    }
+
+                    if (ids.size === 0) {
+                        unreadWorkspaces.delete(workspace.name);
+                    }
+
+                    previousWindowIdsByWorkspace.set(workspace.name, ids);
+                }
+
+                for (const name of [
+                    ...previousWindowIdsByWorkspace.keys(),
+                ]) {
+                    if (!seen.has(name)) {
+                        previousWindowIdsByWorkspace.delete(name);
+                        unreadWorkspaces.delete(name);
+                    }
+                }
+
+                trackedWindows = true;
             }
 
             function render() {
@@ -111,20 +179,25 @@
                 const wm = output.glazewm;
                 workspaces.replaceChildren();
                 if (wm) {
+                    updateUnread(wm);
                     for (const workspace of wm.currentWorkspaces) {
                         const button = document.createElement("button");
                         const focused =
                             wm.focusedWorkspace?.name === workspace.name;
                         const displayed =
                             wm.displayedWorkspace?.name === workspace.name;
+                        const unread = unreadWorkspaces.has(workspace.name);
                         button.className = focused
                             ? "focused"
                             : displayed
                             ? "displayed"
+                            : unread
+                            ? "unread"
                             : "";
                         button.textContent =
                             workspace.displayName ?? workspace.name;
                         button.addEventListener("click", () => {
+                            unreadWorkspaces.delete(workspace.name);
                             wm.runCommand(
                                 `focus --workspace ${workspace.name}`
                             );

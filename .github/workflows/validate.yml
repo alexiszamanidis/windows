@@ -202,8 +202,12 @@ jobs:
             throw "GlazeWM config was not deployed."
           }
           $glazeText = [System.IO.File]::ReadAllText($glazeConfig)
-          if ($glazeText -notmatch "display_name: '1: chrome'" -or $glazeText -notmatch "display_name: '10: brave'" -or $glazeText -notmatch "shell-exec wt" -or $glazeText -notmatch "shell-exec zebar" -or $glazeText -notmatch "top: '40px'") {
+          if ($glazeText -notmatch "display_name: '1: chrome'" -or $glazeText -notmatch "display_name: '10: brave'" -or $glazeText -notmatch "chrome-startup\.ps1" -or $glazeText -notmatch "shell-exec zebar" -or $glazeText -notmatch "top: '40px'") {
             throw "GlazeWM config does not keep the i3 workspaces."
+          }
+          $chromeStartup = Join-Path $env:USERPROFILE ".glzr\glazewm\chrome-startup.ps1"
+          if (-not (Test-Path -LiteralPath $chromeStartup)) {
+            throw "Chrome startup script was not deployed."
           }
           $zebarSettings = Join-Path $env:USERPROFILE ".glzr\zebar\settings.json"
           $zebarPack = Join-Path $env:USERPROFILE ".glzr\zebar\workspaces\index.html"

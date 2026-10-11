@@ -282,14 +282,27 @@ Describe "GlazeWM" {
         $config | Should -Match "display_name: '7: vpn'"
         $config | Should -Match "display_name: '9: spotify'"
         $config | Should -Match "display_name: '10: brave'"
+        $config | Should -Match "bind_to_monitor: 0"
+        $config | Should -Match "bind_to_monitor: 1"
         $config | Should -Match "focus --workspace 10"
-        $config | Should -Match "shell-exec wt"
+        $config | Should -Match "chrome-startup\.ps1"
         $config | Should -Match "shell-exec zebar"
+        $startup = if ($config -match '(?s)startup_commands:(.*?)shutdown_commands:') {
+            $Matches[1]
+        } else {
+            ""
+        }
+        $startup | Should -Not -Match "shell-exec wt"
+        $startup | Should -Not -Match "shell-exec slack"
+        $startup | Should -Not -Match "shell-exec brave"
+        $startup | Should -Not -Match "'shell-exec chrome'"
+        $config | Should -Match "shell-exec wt"
         $config | Should -Match "top: '40px'"
         $config | Should -Match "equals: 'zebar'"
         $config | Should -Match "\['lwin\+enter'\]"
         $config | Should -Not -Match "'lwin\+p'"
         $config | Should -Not -Match "'lwin\+l'"
+        Test-Path -LiteralPath ./chrome-startup.ps1 | Should -BeTrue
     }
 
     It "writes the config and the login entry" {
@@ -307,6 +320,8 @@ Describe "GlazeWM" {
         $config = [System.IO.File]::ReadAllText($configPath)
         $config | Should -Match "display_name: '1: chrome'"
         $config | Should -Match "move --workspace 2"
+        $config | Should -Match "chrome-startup\.ps1"
+        Test-Path -LiteralPath (Join-Path $directory "chrome-startup.ps1") | Should -BeTrue
         Get-ItemPropertyValue -LiteralPath $runPath -Name "GlazeWM" | Should -Be '"C:\Program Files\glzr.io\GlazeWM\glazewm.exe"'
     }
 
@@ -329,6 +344,7 @@ Describe "GlazeWM" {
         $script:reloads | Should -Be 1
         $script:starts | Should -Be 0
         [System.IO.File]::ReadAllText($configPath) | Should -Match "display_name: '10: brave'"
+        Test-Path -LiteralPath (Join-Path $directory "chrome-startup.ps1") | Should -BeTrue
     }
 
     It "starts GlazeWM when it is installed and not running" {
@@ -382,7 +398,9 @@ Describe "GlazeWM" {
         $pack = Join-Path $directory "workspaces\zpack.json"
         Test-Path -LiteralPath $pack | Should -BeTrue
         [System.IO.File]::ReadAllText($pack) | Should -Match '"includeFiles": \["\*\.html"\]'
-        [System.IO.File]::ReadAllText((Join-Path $directory "workspaces\index.html")) | Should -Match "currentWorkspaces"
+        $bar = [System.IO.File]::ReadAllText((Join-Path $directory "workspaces\index.html"))
+        $bar | Should -Match "currentWorkspaces"
+        $bar | Should -Match "unread"
         $settings = [System.IO.File]::ReadAllText((Join-Path $directory "settings.json"))
         $settings | Should -Match '"pack": "workspaces"'
         $settings | Should -Match '"widget": "vanilla"'
