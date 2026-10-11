@@ -43,6 +43,11 @@ jobs:
             $analysis | Format-Table -AutoSize
             throw "PSScriptAnalyzer found issues in ./install.Tests.ps1."
           }
+          $analysis = Invoke-ScriptAnalyzer -Path ./flow-launcher-hotkey.ps1 -Severity Warning,Error
+          if ($analysis) {
+            $analysis | Format-Table -AutoSize
+            throw "PSScriptAnalyzer found issues in ./flow-launcher-hotkey.ps1."
+          }
 
       - name: Unit tests
         shell: pwsh
@@ -176,6 +181,22 @@ jobs:
             }
           }
 
+          $flowSettings = Join-Path $env:APPDATA "FlowLauncher\Settings\Settings.json"
+          if (-not (Test-Path -LiteralPath $flowSettings)) {
+            throw "Flow Launcher settings were not written."
+          }
+          $flowJson = [System.IO.File]::ReadAllText($flowSettings)
+          if ($flowJson -notmatch '"Hotkey": "Win \+ P"') {
+            throw "Flow Launcher hotkey is not Win+P."
+          }
+          if ($flowJson -notmatch '"StartFlowLauncherOnSystemStartup": true') {
+            throw "Flow Launcher was not set to start at login."
+          }
+          $disabledHotkeys = (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced").DisabledHotkeys
+          if ($disabledHotkeys.IndexOf("P") -lt 0) {
+            throw "Win+P was not disabled. DisabledHotkeys is '$disabledHotkeys'."
+          }
+
           $inputLeapConfig = Join-Path $env:LOCALAPPDATA "InputLeap\input-leap.sgc"
           if (-not (Test-Path -LiteralPath $inputLeapConfig)) {
             throw "Input Leap layout was not deployed."
@@ -270,6 +291,7 @@ jobs:
             throw "Could not set the Git sentinel before the Packages task."
           }
           [System.IO.File]::WriteAllText($inputLeapConfig, "sentinel")
+          [System.IO.File]::WriteAllText($flowSettings, "sentinel")
           & ./install.ps1 Packages
           if ($global:wslCalls.Count -ne 0) {
             throw "The Packages task invoked WSL."
@@ -283,6 +305,9 @@ jobs:
           }
           if ([System.IO.File]::ReadAllText($inputLeapConfig) -ne "sentinel") {
             throw "The Packages task changed the Input Leap layout."
+          }
+          if ([System.IO.File]::ReadAllText($flowSettings) -ne "sentinel") {
+            throw "The Packages task changed the Flow Launcher settings."
           }
 
       - name: Verify packages exist in WinGet

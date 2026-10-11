@@ -158,3 +158,111 @@ Describe "WinGet packages" {
         $script:wingetCalls.Count | Should -Be 1
     }
 }
+
+Describe "Flow Launcher hotkey" {
+    BeforeEach {
+        $script:TestFunctionOverride.Clear()
+    }
+
+    It "parses the Win+P capture script" {
+        $tokens = $null
+        $parseErrors = $null
+        [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path ./flow-launcher-hotkey.ps1),
+            [ref]$tokens,
+            [ref]$parseErrors
+        )
+        $parseErrors.Count | Should -Be 0
+    }
+
+    It "adds Win+P without dropping other disabled shortcuts" {
+        $path = "HKCU:\Software\WindowsSetupTest\Advanced"
+        if (Test-Path -LiteralPath "HKCU:\Software\WindowsSetupTest") {
+            Remove-Item -LiteralPath "HKCU:\Software\WindowsSetupTest" -Recurse -Force
+        }
+        New-Item -Path $path -Force | Out-Null
+        New-ItemProperty -LiteralPath $path -Name "DisabledHotkeys" -PropertyType String -Value "Ep" | Out-Null
+
+        Disable-WindowsProjectHotkey -Path $path
+
+        Get-ItemPropertyValue -LiteralPath $path -Name "DisabledHotkeys" | Should -Be "EpP"
+    }
+
+    It "keeps an existing Win+P disable entry" {
+        $path = "HKCU:\Software\WindowsSetupTest\Advanced"
+        if (Test-Path -LiteralPath "HKCU:\Software\WindowsSetupTest") {
+            Remove-Item -LiteralPath "HKCU:\Software\WindowsSetupTest" -Recurse -Force
+        }
+        New-Item -Path $path -Force | Out-Null
+        New-ItemProperty -LiteralPath $path -Name "DisabledHotkeys" -PropertyType String -Value "P" | Out-Null
+
+        Disable-WindowsProjectHotkey -Path $path
+
+        Get-ItemPropertyValue -LiteralPath $path -Name "DisabledHotkeys" | Should -Be "P"
+    }
+
+    It "sets the Flow Launcher hotkey and keeps the other settings" {
+        $directory = Join-Path $TestDrive "flow"
+        New-Item -ItemType Directory -Path $directory | Out-Null
+        $settingsPath = Join-Path $directory "Settings.json"
+        $utf8 = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($settingsPath, '{"Hotkey": "Alt \u002B Space", "Theme": "Dark"}', $utf8)
+        Add-TestFunction Get-FlowLauncherSettingsPath { return $settingsPath }
+
+        Set-FlowLauncherSetting
+
+        $json = [System.IO.File]::ReadAllText($settingsPath)
+        $json | Should -Match '"Hotkey": "Win \+ P"'
+        $json | Should -Match '"Theme": "Dark"'
+        $json | Should -Match '"StartFlowLauncherOnSystemStartup": true'
+        $json | Should -Not -Match "Alt"
+    }
+
+    It "starts Flow Launcher when Windows releases Win+P" {
+        $directory = Join-Path $TestDrive "flow-free"
+        New-Item -ItemType Directory -Path $directory | Out-Null
+        $settingsPath = Join-Path $directory "Settings.json"
+        $script:flowStarts = 0
+        $script:captures = 0
+        $script:captureRemovals = 0
+        Add-TestFunction Get-FlowLauncherSettingsPath { return $settingsPath }
+        Add-TestFunction Stop-FlowLauncher { }
+        Add-TestFunction Restart-ExplorerShell { }
+        Add-TestFunction Disable-WindowsProjectHotkey { }
+        Add-TestFunction Test-FlowLauncherHotkeyAvailable { return $true }
+        Add-TestFunction Install-FlowLauncherHotkeyCapture { $script:captures++ }
+        Add-TestFunction Remove-FlowLauncherHotkeyCapture { $script:captureRemovals++ }
+        Add-TestFunction Start-FlowLauncher { $script:flowStarts++ }
+
+        Set-FlowLauncherHotkey
+
+        $script:flowStarts | Should -Be 1
+        $script:captures | Should -Be 0
+        $script:captureRemovals | Should -Be 1
+        [System.IO.File]::ReadAllText($settingsPath) | Should -Match '"Hotkey": "Win \+ P"'
+    }
+
+    It "captures Win+P when Windows still owns the project shortcut" {
+        $directory = Join-Path $TestDrive "flow-owned"
+        New-Item -ItemType Directory -Path $directory | Out-Null
+        $settingsPath = Join-Path $directory "Settings.json"
+        $script:flowStarts = 0
+        $script:captures = 0
+        $script:captureRemovals = 0
+        Add-TestFunction Get-FlowLauncherSettingsPath { return $settingsPath }
+        Add-TestFunction Stop-FlowLauncher { }
+        Add-TestFunction Restart-ExplorerShell { }
+        Add-TestFunction Disable-WindowsProjectHotkey { }
+        Add-TestFunction Test-FlowLauncherHotkeyAvailable { return $false }
+        Add-TestFunction Install-FlowLauncherHotkeyCapture { $script:captures++ }
+        Add-TestFunction Remove-FlowLauncherHotkeyCapture { $script:captureRemovals++ }
+        Add-TestFunction Start-FlowLauncher { $script:flowStarts++ }
+
+        Set-FlowLauncherHotkey
+
+        $script:flowStarts | Should -Be 1
+        $script:captures | Should -Be 1
+        $script:captureRemovals | Should -Be 0
+        [System.IO.File]::ReadAllText($settingsPath) | Should -Match '"Hotkey": "Win \+ P"'
+    }
+}

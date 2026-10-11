@@ -29,6 +29,7 @@ The URL follows the repository default branch. The one-liner runs every task. Se
 -   Long paths in Windows and Git `core.longpaths`
 -   Git name, email, pull rebase, default branch and fetch prune. The credential helper is `manager`
 -   The WinGet packages in `packages.txt`
+-   Flow Launcher opens with Win+P and starts at login. Windows is told to stop using that shortcut for the project screen. If Windows still takes Win+P, a login helper opens Flow Launcher instead
 -   The Input Leap server layout. Desktop is on the left and the Linux client is on the right. The server starts at login
 -   WSL2 and one Ubuntu distro
 -   Hack Nerd Font Mono and Windows Terminal settings. The default profile is the Ubuntu distro that is installed. Ansible installs the same font family inside Linux
@@ -46,4 +47,4 @@ The installer runs every task unless you name a subset. Separate names with a co
 .\install.ps1 DarkMode,Wallpaper,Explorer,LongPaths
 ```
 
-The task names are `DarkMode`, `Wallpaper`, `Explorer`, `LongPaths`, `Git`, `Packages`, `InputLeap`, `Wsl`, `Font` and `Terminal`. A file run takes that list as its first argument. A file run needs a process execution policy that allows unsigned scripts: `powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 Packages`. The one-liner cannot take arguments, so set `WINDOWS_TASKS` before running it. Long paths and the Git identity are applied when Git is already installed.
+The task names are `DarkMode`, `Wallpaper`, `Explorer`, `LongPaths`, `Git`, `Packages`, `FlowLauncher`, `InputLeap`, `Wsl`, `Font` and `Terminal`. A file run takes that list as its first argument. A file run needs a process execution policy that allows unsigned scripts: `powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 Packages`. The one-liner cannot take arguments, so set `WINDOWS_TASKS` before running it. Long paths and the Git identity are applied when Git is already installed.

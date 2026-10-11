@@ -10,7 +10,7 @@ $packagesFile = if ($PSScriptRoot) {
     Join-Path $env:TEMP "windows-packages.txt"
 }
 
-$knownTasks = @("DarkMode", "Wallpaper", "Explorer", "LongPaths", "Git", "Packages", "InputLeap", "Wsl", "Font", "Terminal")
+$knownTasks = @("DarkMode", "Wallpaper", "Explorer", "LongPaths", "Git", "Packages", "FlowLauncher", "InputLeap", "Wsl", "Font", "Terminal")
 $selectedTasks = $null
 # A param block would break `irm ... | iex`, so a file run takes the task list as its first argument.
 if ($PSCommandPath -and $args.Count -gt 0) {
@@ -464,6 +464,292 @@ if (Test-SelectedTask "Packages") {
     foreach ($id in $packages) {
         Install-RequestedPackage -Id $id -Option $packageOptions[$id]
     }
+}
+
+function Get-FlowLauncherSettingsPath {
+    return Join-Path (Join-Path $env:APPDATA "FlowLauncher\Settings") "Settings.json"
+}
+
+function Get-FlowLauncherExecutable {
+    $root = Join-Path $env:LOCALAPPDATA "FlowLauncher"
+    $stub = Join-Path $root "Flow.Launcher.exe"
+    if (Test-Path -LiteralPath $stub) {
+        return $stub
+    }
+
+    if (-not (Test-Path -LiteralPath $root)) {
+        return $null
+    }
+
+    $found = Get-ChildItem -LiteralPath $root -Filter "Flow.Launcher.exe" -Recurse -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($found) {
+        return $found.FullName
+    }
+
+    return $null
+}
+
+function Stop-FlowLauncher {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    if (-not $PSCmdlet.ShouldProcess("Flow.Launcher", "Stop")) {
+        return
+    }
+
+    $previousErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = "SilentlyContinue"
+    Get-Process -Name "Flow.Launcher" | Stop-Process -Force
+    $ErrorActionPreference = $previousErrorAction
+}
+
+function Disable-WindowsProjectHotkey {
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [string]$Path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+    )
+
+    # Explorer reads this when the shell starts. Upper-case P is Win+P. Lower-case p is F1.
+    if (-not $PSCmdlet.ShouldProcess($Path, "Disable the Windows project shortcut")) {
+        return
+    }
+
+    # New-Item -Force on an existing registry key deletes its values.
+    if (-not (Test-Path -LiteralPath $Path)) {
+        New-Item -Path $Path | Out-Null
+    }
+
+    $existing = ""
+    try {
+        $existing = [string](Get-ItemPropertyValue -LiteralPath $Path -Name "DisabledHotkeys")
+    } catch {
+        $existing = ""
+    }
+    if ($existing.IndexOf("P", [System.StringComparison]::Ordinal) -lt 0) {
+        $existing += "P"
+    }
+
+    New-ItemProperty -LiteralPath $Path -Name "DisabledHotkeys" -PropertyType String -Value $existing -Force | Out-Null
+    Write-Information "Windows project shortcut is disabled."
+}
+
+function Restart-ExplorerShell {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    if (-not $PSCmdlet.ShouldProcess("explorer", "Restart the shell")) {
+        return
+    }
+
+    $previousErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = "SilentlyContinue"
+    Get-Process -Name "explorer" | Stop-Process -Force
+    $ErrorActionPreference = $previousErrorAction
+
+    $deadline = (Get-Date).AddSeconds(10)
+    do {
+        Start-Sleep -Milliseconds 200
+        $explorer = Get-Process -Name "explorer" -ErrorAction SilentlyContinue
+    } while (-not $explorer -and (Get-Date) -lt $deadline)
+
+    if (-not $explorer) {
+        Start-Process -FilePath "explorer.exe"
+    }
+
+    # Hotkeys are registered after the shell window exists.
+    Start-Sleep -Seconds 2
+}
+
+function Get-JsonWithProperty {
+    param(
+        [string]$Json,
+        [string]$Name,
+        [string]$EncodedValue
+    )
+
+    $property = '"' + $Name + '": ' + $EncodedValue
+    $stringPattern = '"' + [regex]::Escape($Name) + '"\s*:\s*"(?:\\.|[^"\\])*"'
+    $booleanPattern = '"' + [regex]::Escape($Name) + '"\s*:\s*(?:true|false)'
+    $matchPattern = if ($EncodedValue.StartsWith('"')) { $stringPattern } else { $booleanPattern }
+    if ([regex]::IsMatch($Json, $matchPattern)) {
+        $regex = [regex]::new($matchPattern)
+        return $regex.Replace($Json, $property, 1)
+    }
+
+    $index = $Json.IndexOf("{")
+    if ($index -lt 0) {
+        return "{`r`n    $property`r`n}`r`n"
+    }
+
+    $prefix = $Json.Substring(0, $index + 1)
+    $suffix = $Json.Substring($index + 1)
+    if ($suffix -match '^\s*\}') {
+        return $prefix + "`r`n    $property`r`n}`r`n"
+    }
+
+    return $prefix + "`r`n    $property," + $suffix
+}
+
+function Set-FlowLauncherSetting {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    $settingsPath = Get-FlowLauncherSettingsPath
+    if (-not $PSCmdlet.ShouldProcess($settingsPath, "Set the Flow Launcher hotkey")) {
+        return
+    }
+
+    New-Item -ItemType Directory -Path (Split-Path -Parent $settingsPath) -Force | Out-Null
+    if (Test-Path -LiteralPath $settingsPath) {
+        $json = [System.IO.File]::ReadAllText($settingsPath)
+    } else {
+        $json = "{}"
+    }
+
+    $json = Get-JsonWithProperty -Json $json -Name "Hotkey" -EncodedValue '"Win + P"'
+    $json = Get-JsonWithProperty -Json $json -Name "StartFlowLauncherOnSystemStartup" -EncodedValue "true"
+    $utf8 = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($settingsPath, $json, $utf8)
+    Write-Information "Flow Launcher hotkey is Win+P."
+}
+
+function Test-FlowLauncherHotkeyAvailable {
+    if (-not ([System.Management.Automation.PSTypeName]"WindowsSetup.HotkeyNativeMethods").Type) {
+        Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+
+namespace WindowsSetup {
+    public static class HotkeyNativeMethods {
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool RegisterHotKey(IntPtr window, int id, uint modifiers, uint key);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool UnregisterHotKey(IntPtr window, int id);
+    }
+}
+"@
+    }
+
+    # MOD_WIN is 0x0008. VK_P is 0x50. This is the registration Flow Launcher attempts.
+    $hotkeyId = 0x5A11
+    $registered = [WindowsSetup.HotkeyNativeMethods]::RegisterHotKey([IntPtr]::Zero, $hotkeyId, 0x0008, 0x50)
+    if ($registered) {
+        [void][WindowsSetup.HotkeyNativeMethods]::UnregisterHotKey([IntPtr]::Zero, $hotkeyId)
+    }
+
+    return [bool]$registered
+}
+
+function Get-FlowLauncherHotkeyScriptPath {
+    return Join-Path (Join-Path $env:APPDATA "WindowsSetup") "flow-launcher-hotkey.ps1"
+}
+
+function Stop-FlowLauncherHotkeyCapture {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    if (-not $PSCmdlet.ShouldProcess("FlowLauncherWinP", "Stop")) {
+        return
+    }
+
+    $previousErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = "SilentlyContinue"
+    Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" |
+        Where-Object { $_.CommandLine -like "*flow-launcher-hotkey.ps1*" } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+    $ErrorActionPreference = $previousErrorAction
+}
+
+function Install-FlowLauncherHotkeyCapture {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    $destination = Get-FlowLauncherHotkeyScriptPath
+    if (-not $PSCmdlet.ShouldProcess($destination, "Capture Win+P for Flow Launcher")) {
+        return
+    }
+
+    $source = if ($installerRoot) {
+        Join-Path $installerRoot "flow-launcher-hotkey.ps1"
+    }
+    New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+    if ($source -and (Test-Path -LiteralPath $source)) {
+        Copy-Item -LiteralPath $source -Destination $destination -Force
+    } else {
+        Invoke-WebRequest -Uri "$repoRawBase/$repoRef/flow-launcher-hotkey.ps1" -OutFile $destination -UseBasicParsing
+    }
+
+    $runPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+    if (-not (Test-Path -LiteralPath $runPath)) {
+        New-Item -Path $runPath | Out-Null
+    }
+    $runValue = "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$destination`""
+    New-ItemProperty -Path $runPath -Name "FlowLauncherWinP" -PropertyType String -Value $runValue -Force | Out-Null
+    Stop-FlowLauncherHotkeyCapture
+    Start-Process -FilePath "powershell.exe" -WindowStyle Hidden -ArgumentList @(
+        "-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", $destination
+    )
+    Write-Information "Win+P opens Flow Launcher when Windows keeps the project shortcut."
+}
+
+function Remove-FlowLauncherHotkeyCapture {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    $runPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+    if (-not $PSCmdlet.ShouldProcess($runPath, "Remove the Win+P capture helper")) {
+        return
+    }
+
+    Remove-ItemProperty -Path $runPath -Name "FlowLauncherWinP" -ErrorAction SilentlyContinue
+    Stop-FlowLauncherHotkeyCapture
+}
+
+function Start-FlowLauncher {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    $executable = Get-FlowLauncherExecutable
+    if (-not $executable) {
+        Write-Information "Flow Launcher is not installed yet, so it was not started."
+        return
+    }
+
+    if (-not $PSCmdlet.ShouldProcess($executable, "Start")) {
+        return
+    }
+
+    Start-Process -FilePath $executable
+    Write-Information "Flow Launcher starts at login."
+}
+
+function Set-FlowLauncherHotkey {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    if (-not $PSCmdlet.ShouldProcess("Flow Launcher", "Use Win+P")) {
+        return
+    }
+
+    Stop-FlowLauncher
+    Disable-WindowsProjectHotkey
+    Restart-ExplorerShell
+    Set-FlowLauncherSetting
+    # Flow registers Win+P with RegisterHotKey. When Windows still owns that shortcut, registration fails
+    # and Flow reports it on every launch, so a low-level hook opens Flow instead.
+    if (Test-FlowLauncherHotkeyAvailable) {
+        Remove-FlowLauncherHotkeyCapture
+    } else {
+        Install-FlowLauncherHotkeyCapture
+    }
+
+    Start-FlowLauncher
+}
+
+if (Test-SelectedTask "FlowLauncher") {
+    Set-FlowLauncherHotkey
 }
 
 if (Test-SelectedTask "LongPaths") {
