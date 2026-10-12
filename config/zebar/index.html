@@ -234,7 +234,9 @@
             function renderSystray(systray) {
                 const icons = systray?.icons ?? [];
                 const key = icons
-                    .map((icon) => `${icon.id}:${icon.iconHash}:${icon.tooltip}`)
+                    .map(
+                        (icon) => `${icon.id}:${icon.iconHash}:${icon.tooltip}`
+                    )
                     .join("|");
                 if (key === systrayKey) {
                     return;
