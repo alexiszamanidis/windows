@@ -11,7 +11,7 @@
                 background: #282a36;
                 color: #f8f8f2;
                 font-family: "Segoe UI", sans-serif;
-                font-size: 13px;
+                font-size: 20px;
             }
 
             #bar {
@@ -76,6 +76,18 @@
                 color: #f8f8f2;
             }
 
+            #systray {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+
+            #systray img {
+                width: 16px;
+                height: 16px;
+                cursor: pointer;
+            }
+
             #clock {
                 color: #f8f8f2;
             }
@@ -89,6 +101,7 @@
                     <span id="cpu"><span class="label">CPU</span>--</span>
                     <span id="memory"><span class="label">MEM</span>--</span>
                 </div>
+                <div id="systray"></div>
                 <div id="clock"></div>
             </div>
         </div>
@@ -100,12 +113,14 @@
                 cpu: { type: "cpu", refreshInterval: 2000 },
                 memory: { type: "memory", refreshInterval: 2000 },
                 date: { type: "date", formatting: "EEE dd-MM HH:mm" },
+                systray: { type: "systray" },
             });
 
             const workspaces = document.getElementById("workspaces");
             const cpuEl = document.getElementById("cpu");
             const memoryEl = document.getElementById("memory");
             const clock = document.getElementById("clock");
+            const systrayEl = document.getElementById("systray");
 
             const unreadWorkspaces = new Set();
             const previousWindowIdsByWorkspace = new Map();
@@ -210,7 +225,50 @@
                 memoryEl.innerHTML = `<span class="label">MEM</span>${pct(
                     output.memory?.usage
                 )}`;
+                renderSystray(output.systray);
                 clock.textContent = output.date?.formatted ?? "";
+            }
+
+            let systrayKey = "";
+
+            function renderSystray(systray) {
+                const icons = systray?.icons ?? [];
+                const key = icons
+                    .map((icon) => `${icon.id}:${icon.iconHash}:${icon.tooltip}`)
+                    .join("|");
+                if (key === systrayKey) {
+                    return;
+                }
+                systrayKey = key;
+
+                systrayEl.replaceChildren();
+                for (const icon of icons) {
+                    const img = document.createElement("img");
+                    img.src = icon.iconUrl;
+                    img.title = icon.tooltip ?? "";
+                    img.addEventListener("click", () =>
+                        providers.outputMap.systray?.onLeftClick(icon.id)
+                    );
+                    img.addEventListener("dblclick", () =>
+                        providers.outputMap.systray?.onLeftDoubleClick(icon.id)
+                    );
+                    img.addEventListener("auxclick", (event) => {
+                        if (event.button === 1) {
+                            providers.outputMap.systray?.onMiddleClick(icon.id);
+                        }
+                    });
+                    img.addEventListener("contextmenu", (event) => {
+                        event.preventDefault();
+                        providers.outputMap.systray?.onRightClick(icon.id);
+                    });
+                    img.addEventListener("mouseenter", () =>
+                        providers.outputMap.systray?.onHoverEnter(icon.id)
+                    );
+                    img.addEventListener("mouseleave", () =>
+                        providers.outputMap.systray?.onHoverLeave(icon.id)
+                    );
+                    systrayEl.appendChild(img);
+                }
             }
 
             providers.onOutput(render);

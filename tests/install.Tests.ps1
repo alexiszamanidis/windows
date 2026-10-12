@@ -487,6 +487,7 @@ Describe "GlazeWM" {
         $bar = [System.IO.File]::ReadAllText((Join-Path $directory "workspaces\index.html"))
         $bar | Should -Match "currentWorkspaces"
         $bar | Should -Match "unread"
+        $bar | Should -Match 'type: "systray"'
         $settings = [System.IO.File]::ReadAllText((Join-Path $directory "settings.json"))
         $settings | Should -Match '"pack": "workspaces"'
         $settings | Should -Match '"widget": "vanilla"'
