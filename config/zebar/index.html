@@ -407,7 +407,9 @@
                             : signal >= 25
                             ? "\uE873"
                             : "\uE872";
-                    networkEl.title = `${gateway?.ssid ?? "Wi-Fi"}\nSignal ${Math.round(signal)}%`;
+                    networkEl.title = `${
+                        gateway?.ssid ?? "Wi-Fi"
+                    }\nSignal ${Math.round(signal)}%`;
                     return;
                 }
                 icon.textContent = "\uE839";
@@ -446,8 +448,17 @@
                 const percent = Math.round(battery.chargePercent);
                 const level = Math.min(10, Math.floor(percent / 10));
                 const charging = [
-                    "\uE85A", "\uE85B", "\uE85C", "\uE85D", "\uE85E", "\uE85F",
-                    "\uE860", "\uE861", "\uE862", "\uE83E", "\uEA93",
+                    "\uE85A",
+                    "\uE85B",
+                    "\uE85C",
+                    "\uE85D",
+                    "\uE85E",
+                    "\uE85F",
+                    "\uE860",
+                    "\uE861",
+                    "\uE862",
+                    "\uE83E",
+                    "\uEA93",
                 ];
                 document.getElementById("battery-icon").textContent =
                     battery.isCharging
