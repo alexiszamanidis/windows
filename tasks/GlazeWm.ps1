@@ -284,11 +284,13 @@ function Install-ZebarWorkspaceBar {
         New-Item -ItemType Directory -Path $sourceDirectory -Force | Out-Null
         Invoke-WebRequest -Uri "$repoRawBase/$repoRef/config/zebar/zpack.json" -OutFile (Join-Path $sourceDirectory "zpack.json") -UseBasicParsing
         Invoke-WebRequest -Uri "$repoRawBase/$repoRef/config/zebar/index.html" -OutFile (Join-Path $sourceDirectory "index.html") -UseBasicParsing
+        Invoke-WebRequest -Uri "$repoRawBase/$repoRef/config/zebar/volume.ps1" -OutFile (Join-Path $sourceDirectory "volume.ps1") -UseBasicParsing
     }
 
     New-Item -ItemType Directory -Path $packDirectory -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $sourceDirectory "zpack.json") -Destination (Join-Path $packDirectory "zpack.json") -Force
     Copy-Item -LiteralPath (Join-Path $sourceDirectory "index.html") -Destination (Join-Path $packDirectory "index.html") -Force
+    Copy-Item -LiteralPath (Join-Path $sourceDirectory "volume.ps1") -Destination (Join-Path $packDirectory "volume.ps1") -Force
 
     $settingsPath = Join-Path $directory "settings.json"
     if (Test-Path -LiteralPath $settingsPath) {
@@ -303,6 +305,54 @@ function Install-ZebarWorkspaceBar {
     Write-Information "Workspace bar installed."
 }
 
+function Test-ZebarAssetPort {
+    # Zebar serves widget pages from 127.0.0.1:6124. A force-kill can leave that
+    # listener behind after the process is gone, so Get-NetTCPConnection is not enough.
+    $lines = & netstat.exe -ano -p tcp
+    foreach ($line in $lines) {
+        if ($line -match "127\.0\.0\.1:6124\s+\S+\s+LISTENING") {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Wait-ZebarStopped {
+    param([int]$TimeoutSeconds = 8)
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        $running = @(Get-Process -Name "zebar" -ErrorAction SilentlyContinue)
+        if ($running.Count -eq 0 -and -not (Test-ZebarAssetPort)) {
+            return $true
+        }
+
+        Start-Sleep -Milliseconds 200
+    } while ((Get-Date) -lt $deadline)
+
+    return $false
+}
+
+function Wait-ZebarAssetServer {
+    param([int]$TimeoutSeconds = 8)
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        if (Test-ZebarAssetPort) {
+            return $true
+        }
+
+        if (-not (Get-Process -Name "zebar" -ErrorAction SilentlyContinue)) {
+            return $false
+        }
+
+        Start-Sleep -Milliseconds 200
+    } while ((Get-Date) -lt $deadline)
+
+    return (Test-ZebarAssetPort)
+}
+
 function Stop-ZebarBar {
     [CmdletBinding(SupportsShouldProcess)]
     param()
@@ -313,8 +363,28 @@ function Stop-ZebarBar {
 
     $previousErrorAction = $ErrorActionPreference
     $ErrorActionPreference = "SilentlyContinue"
-    Get-Process -Name "zebar" | Stop-Process -Force
+    $processes = @(Get-Process -Name "zebar")
+    foreach ($process in $processes) {
+        $process.CloseMainWindow() | Out-Null
+    }
+
+    if (-not (Wait-ZebarStopped -TimeoutSeconds 3)) {
+        $ids = @($processes | ForEach-Object { $_.Id })
+        $children = @()
+        if ($ids.Count -gt 0) {
+            $children = @(Get-CimInstance Win32_Process | Where-Object {
+                $_.Name -eq "msedgewebview2.exe" -and ($ids -contains $_.ParentProcessId)
+            })
+        }
+
+        Get-Process -Name "zebar" | Stop-Process -Force
+        foreach ($child in $children) {
+            Stop-Process -Id $child.ProcessId -Force
+        }
+    }
+
     $ErrorActionPreference = $previousErrorAction
+    Wait-ZebarStopped -TimeoutSeconds 8 | Out-Null
 }
 
 function Start-ZebarBar {
@@ -333,7 +403,14 @@ function Start-ZebarBar {
 
     Stop-ZebarBar
     # startup -q keeps the provider refresh from logging into the parent console.
+    # Starting again before port 6124 is released leaves the new bar unable to load.
     Start-DetachedProcess -FilePath $executable -ArgumentList @("startup", "-q")
+    if (-not (Wait-ZebarAssetServer)) {
+        Stop-ZebarBar
+        Start-DetachedProcess -FilePath $executable -ArgumentList @("startup", "-q")
+        Wait-ZebarAssetServer | Out-Null
+    }
+
     Write-Information "Workspace bar started."
 }
 

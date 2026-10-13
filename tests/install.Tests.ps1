@@ -488,6 +488,9 @@ Describe "GlazeWM" {
         $bar | Should -Match "currentWorkspaces"
         $bar | Should -Match "unread"
         $bar | Should -Match 'type: "systray"'
+        $bar | Should -Not -Match 'type: "audio"'
+        $bar | Should -Match "volume\.ps1"
+        Test-Path -LiteralPath (Join-Path $directory "workspaces\volume.ps1") | Should -BeTrue
         $settings = [System.IO.File]::ReadAllText((Join-Path $directory "settings.json"))
         $settings | Should -Match '"pack": "workspaces"'
         $settings | Should -Match '"widget": "vanilla"'

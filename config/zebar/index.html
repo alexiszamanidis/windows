@@ -170,7 +170,6 @@
                 systray: { type: "systray" },
                 keyboard: { type: "keyboard", refreshInterval: 500 },
                 network: { type: "network", refreshInterval: 3000 },
-                audio: { type: "audio" },
                 battery: { type: "battery", refreshInterval: 10000 },
                 weather: { type: "weather" },
             });
@@ -227,23 +226,26 @@
                 openUri("ms-settings:sound");
             });
             volumeEl.addEventListener("auxclick", (event) => {
-                const device = providers.outputMap.audio?.defaultPlaybackDevice;
-                if (event.button === 1 && device) {
-                    providers.outputMap.audio.setMute(!device.isMuted);
+                if (event.button !== 1 || !playback || !volumeProc) {
+                    return;
                 }
+                const muted = !playback.muted;
+                playback = { ...playback, muted };
+                renderVolume();
+                volumeProc.write(`m ${muted ? "1" : "0"}\n`);
             });
             volumeEl.addEventListener("wheel", (event) => {
-                const audio = providers.outputMap.audio;
-                const device = audio?.defaultPlaybackDevice;
-                if (!device) {
+                if (!playback || !volumeProc) {
                     return;
                 }
                 const step = event.deltaY < 0 ? 2 : -2;
                 const volume = Math.min(
                     100,
-                    Math.max(0, Math.round(device.volume) + step)
+                    Math.max(0, Math.round(playback.volume) + step)
                 );
-                audio.setVolume(volume);
+                playback = { ...playback, volume };
+                renderVolume();
+                volumeProc.write(`v ${volume}\n`);
             });
 
             batteryEl.addEventListener("click", () =>
@@ -365,7 +367,7 @@
                 renderWeather(output.weather);
                 renderLanguage(output.keyboard);
                 renderNetwork(output.network);
-                renderVolume(output.audio);
+                renderVolume();
                 renderBattery(output.battery);
                 renderClock(output.date);
             }
@@ -416,16 +418,21 @@
                 networkEl.title = iface.friendlyName ?? "Ethernet";
             }
 
-            function renderVolume(audio) {
+            // Zebar 3.3.1 crashes when its audio provider is told there is no
+            // default device. volume.ps1 reads the endpoint without that callback.
+            let playback = null;
+            let volumeProc = null;
+            let volumeReady = false;
+
+            function renderVolume() {
                 const icon = document.getElementById("volume-icon");
-                const device = audio?.defaultPlaybackDevice;
-                if (!device) {
+                if (!playback) {
                     icon.textContent = "\uEA85";
                     volumeEl.title = "No audio device";
                     return;
                 }
-                const volume = Math.round(device.volume);
-                icon.textContent = device.isMuted
+                const volume = Math.round(playback.volume);
+                icon.textContent = playback.muted
                     ? "\uE74F"
                     : volume === 0
                     ? "\uE992"
@@ -434,9 +441,63 @@
                     : volume < 67
                     ? "\uE994"
                     : "\uE995";
-                volumeEl.title = `${device.name}: ${
-                    device.isMuted ? "muted" : `${volume}%`
+                volumeEl.title = `${
+                    playback.muted ? "Muted" : `${volume}%`
                 }\nScroll to change, middle-click to mute`;
+            }
+
+            function applyVolumeLine(line) {
+                const text = String(line ?? "").trim();
+                if (!text) {
+                    return;
+                }
+                volumeReady = true;
+                if (text === "none") {
+                    playback = null;
+                    renderVolume();
+                    return;
+                }
+                const [volumeText, mutedText] = text.split(" ");
+                const volume = Number(volumeText);
+                if (!Number.isFinite(volume)) {
+                    return;
+                }
+                playback = { volume, muted: mutedText === "1" };
+                renderVolume();
+            }
+
+            function startVolume() {
+                const script = zebar
+                    .currentWidget()
+                    .htmlPath.replace(/[^\\/]*$/, "volume.ps1");
+                zebar
+                    .shellSpawn("powershell", [
+                        "-NoProfile",
+                        "-NonInteractive",
+                        "-WindowStyle",
+                        "Hidden",
+                        "-ExecutionPolicy",
+                        "Bypass",
+                        "-File",
+                        script,
+                    ])
+                    .then((proc) => {
+                        volumeProc = proc;
+                        proc.onStdout(applyVolumeLine);
+                        proc.onStderr((line) => console.error(line));
+                        proc.onExit(() => {
+                            if (volumeProc !== proc) {
+                                return;
+                            }
+                            volumeProc = null;
+                            if (!volumeReady) {
+                                return;
+                            }
+                            volumeReady = false;
+                            setTimeout(startVolume, 1000);
+                        });
+                    })
+                    .catch(console.error);
             }
 
             function renderBattery(battery) {
@@ -540,6 +601,7 @@
 
             providers.onOutput(render);
             render();
+            startVolume();
         </script>
     </body>
 </html>
