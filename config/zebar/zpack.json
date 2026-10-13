@@ -2,7 +2,7 @@
     "$schema": "https://github.com/glzr-io/zebar/raw/v3.0.0/resources/zpack-schema.json",
     "name": "workspaces",
     "version": "0.0.0",
-    "description": "Top bar that lists the GlazeWM workspaces.",
+    "description": "Top bar with GlazeWM workspaces, tray, language, network, volume and clock.",
     "widgets": [
         {
             "name": "bar",
@@ -13,6 +13,22 @@
             "resizable": false,
             "transparent": true,
             "includeFiles": ["*.html"],
+            "privileges": {
+                "shellCommands": [
+                    {
+                        "program": "sndvol",
+                        "argsRegex": "^-f$"
+                    },
+                    {
+                        "program": "explorer",
+                        "argsRegex": "^ms-(actioncenter|availablenetworks|settings):[A-Za-z/&=]*$"
+                    },
+                    {
+                        "program": "powershell",
+                        "argsRegex": "^-NoProfile -NonInteractive -WindowStyle Hidden -Command \\$q=\\[char\\]34; Add-Type -Name K -Namespace W -MemberDefinition \\('\\[DllImport\\(' \\+ \\$q \\+ 'user32\\.dll' \\+ \\$q \\+ '\\)\\] public static extern void keybd_event\\(byte k, byte s, uint f, System\\.UIntPtr e\\);'\\); \\[W\\.K\\]::keybd_event\\(0x5B, 0, 0, \\[UIntPtr\\]::Zero\\); \\[W\\.K\\]::keybd_event\\(0x20, 0, 0, \\[UIntPtr\\]::Zero\\); \\[W\\.K\\]::keybd_event\\(0x20, 0, 2, \\[UIntPtr\\]::Zero\\); \\[W\\.K\\]::keybd_event\\(0x5B, 0, 2, \\[UIntPtr\\]::Zero\\)$"
+                    }
+                ]
+            },
             "presets": [
                 {
                     "name": "default",

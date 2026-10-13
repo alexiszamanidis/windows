@@ -88,8 +88,44 @@
                 cursor: pointer;
             }
 
-            #clock {
+            #tray {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            #tray button {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                height: 34px;
+                padding: 0 8px;
+                border-radius: 4px;
                 color: #f8f8f2;
+                line-height: 1.15;
+            }
+
+            #tray button:hover {
+                background: #44475a;
+            }
+
+            #tray button[hidden] {
+                display: none;
+            }
+
+            #tray .icon {
+                font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets";
+                font-size: 16px;
+            }
+
+            #tray .small {
+                font-size: 12px;
+                font-variant-numeric: tabular-nums;
+            }
+
+            #clock {
+                align-items: flex-end !important;
             }
         </style>
     </head>
@@ -98,11 +134,29 @@
             <div id="workspaces"></div>
             <div id="right">
                 <div id="resources">
+                    <span id="weather"><span class="label">TMP</span>--</span>
                     <span id="cpu"><span class="label">CPU</span>--</span>
                     <span id="memory"><span class="label">MEM</span>--</span>
                 </div>
                 <div id="systray"></div>
-                <div id="clock"></div>
+                <div id="tray">
+                    <button id="language">
+                        <span class="small" id="language-name"></span>
+                    </button>
+                    <button id="network">
+                        <span class="icon" id="network-icon"></span>
+                    </button>
+                    <button id="volume">
+                        <span class="icon" id="volume-icon"></span>
+                    </button>
+                    <button id="battery" hidden>
+                        <span class="icon" id="battery-icon"></span>
+                    </button>
+                    <button id="clock">
+                        <span class="small" id="clock-time"></span>
+                        <span class="small" id="clock-date"></span>
+                    </button>
+                </div>
             </div>
         </div>
         <script type="module">
@@ -112,15 +166,97 @@
                 glazewm: { type: "glazewm" },
                 cpu: { type: "cpu", refreshInterval: 2000 },
                 memory: { type: "memory", refreshInterval: 2000 },
-                date: { type: "date", formatting: "EEE dd-MM HH:mm" },
+                date: { type: "date", refreshInterval: 1000 },
                 systray: { type: "systray" },
+                keyboard: { type: "keyboard", refreshInterval: 500 },
+                network: { type: "network", refreshInterval: 3000 },
+                audio: { type: "audio" },
+                battery: { type: "battery", refreshInterval: 10000 },
+                weather: { type: "weather" },
             });
 
             const workspaces = document.getElementById("workspaces");
             const cpuEl = document.getElementById("cpu");
             const memoryEl = document.getElementById("memory");
-            const clock = document.getElementById("clock");
             const systrayEl = document.getElementById("systray");
+            const weatherEl = document.getElementById("weather");
+            const languageEl = document.getElementById("language");
+            const networkEl = document.getElementById("network");
+            const volumeEl = document.getElementById("volume");
+            const batteryEl = document.getElementById("battery");
+            const clockEl = document.getElementById("clock");
+
+            // Must match the powershell argsRegex in zpack.json exactly.
+            const PRESS_WIN_SPACE =
+                "$q=[char]34; Add-Type -Name K -Namespace W -MemberDefinition ('[DllImport(' + $q + 'user32.dll' + $q + ')] public static extern void keybd_event(byte k, byte s, uint f, System.UIntPtr e);'); [W.K]::keybd_event(0x5B, 0, 0, [UIntPtr]::Zero); [W.K]::keybd_event(0x20, 0, 0, [UIntPtr]::Zero); [W.K]::keybd_event(0x20, 0, 2, [UIntPtr]::Zero); [W.K]::keybd_event(0x5B, 0, 2, [UIntPtr]::Zero)";
+
+            function openUri(uri) {
+                zebar.shellExec("explorer", uri).catch(console.error);
+            }
+
+            languageEl.addEventListener("click", () => {
+                zebar
+                    .shellExec("powershell", [
+                        "-NoProfile",
+                        "-NonInteractive",
+                        "-WindowStyle",
+                        "Hidden",
+                        "-Command",
+                        PRESS_WIN_SPACE,
+                    ])
+                    .catch(console.error);
+            });
+            languageEl.addEventListener("contextmenu", (event) => {
+                event.preventDefault();
+                openUri("ms-settings:regionlanguage");
+            });
+
+            networkEl.addEventListener("click", () =>
+                openUri("ms-availablenetworks:")
+            );
+            networkEl.addEventListener("contextmenu", (event) => {
+                event.preventDefault();
+                openUri("ms-settings:network");
+            });
+
+            volumeEl.addEventListener("click", () => {
+                zebar.shellExec("sndvol", "-f").catch(console.error);
+            });
+            volumeEl.addEventListener("contextmenu", (event) => {
+                event.preventDefault();
+                openUri("ms-settings:sound");
+            });
+            volumeEl.addEventListener("auxclick", (event) => {
+                const device = providers.outputMap.audio?.defaultPlaybackDevice;
+                if (event.button === 1 && device) {
+                    providers.outputMap.audio.setMute(!device.isMuted);
+                }
+            });
+            volumeEl.addEventListener("wheel", (event) => {
+                const audio = providers.outputMap.audio;
+                const device = audio?.defaultPlaybackDevice;
+                if (!device) {
+                    return;
+                }
+                const step = event.deltaY < 0 ? 2 : -2;
+                const volume = Math.min(
+                    100,
+                    Math.max(0, Math.round(device.volume) + step)
+                );
+                audio.setVolume(volume);
+            });
+
+            batteryEl.addEventListener("click", () =>
+                openUri("ms-settings:batterysaver")
+            );
+
+            clockEl.addEventListener("click", () =>
+                openUri("ms-actioncenter:")
+            );
+            clockEl.addEventListener("contextmenu", (event) => {
+                event.preventDefault();
+                openUri("ms-settings:dateandtime");
+            });
 
             const unreadWorkspaces = new Set();
             const previousWindowIdsByWorkspace = new Map();
@@ -226,7 +362,125 @@
                     output.memory?.usage
                 )}`;
                 renderSystray(output.systray);
-                clock.textContent = output.date?.formatted ?? "";
+                renderWeather(output.weather);
+                renderLanguage(output.keyboard);
+                renderNetwork(output.network);
+                renderVolume(output.audio);
+                renderBattery(output.battery);
+                renderClock(output.date);
+            }
+
+            function renderWeather(weather) {
+                const temp = weather?.celsiusTemp;
+                weatherEl.innerHTML = `<span class="label">TMP</span>${
+                    Number.isFinite(temp) ? `${Math.round(temp)}°` : "--"
+                }`;
+            }
+
+            function renderLanguage(keyboard) {
+                const layout = (keyboard?.layout ?? "").toLowerCase();
+                const label = layout.startsWith("el")
+                    ? "GR"
+                    : layout.startsWith("en")
+                    ? "EN"
+                    : "";
+                document.getElementById("language-name").textContent = label;
+                languageEl.hidden = label === "";
+            }
+
+            function renderNetwork(network) {
+                const icon = document.getElementById("network-icon");
+                const iface = network?.defaultInterface;
+                const gateway = network?.defaultGateway;
+                if (!iface) {
+                    icon.textContent = "\uF384";
+                    networkEl.title = "Not connected";
+                    return;
+                }
+                if (iface.type === "wifi") {
+                    const signal = gateway?.signalStrength ?? 100;
+                    icon.textContent =
+                        signal >= 75
+                            ? "\uE701"
+                            : signal >= 50
+                            ? "\uE874"
+                            : signal >= 25
+                            ? "\uE873"
+                            : "\uE872";
+                    networkEl.title = `${gateway?.ssid ?? "Wi-Fi"}\nSignal ${Math.round(signal)}%`;
+                    return;
+                }
+                icon.textContent = "\uE839";
+                networkEl.title = iface.friendlyName ?? "Ethernet";
+            }
+
+            function renderVolume(audio) {
+                const icon = document.getElementById("volume-icon");
+                const device = audio?.defaultPlaybackDevice;
+                if (!device) {
+                    icon.textContent = "\uEA85";
+                    volumeEl.title = "No audio device";
+                    return;
+                }
+                const volume = Math.round(device.volume);
+                icon.textContent = device.isMuted
+                    ? "\uE74F"
+                    : volume === 0
+                    ? "\uE992"
+                    : volume < 34
+                    ? "\uE993"
+                    : volume < 67
+                    ? "\uE994"
+                    : "\uE995";
+                volumeEl.title = `${device.name}: ${
+                    device.isMuted ? "muted" : `${volume}%`
+                }\nScroll to change, middle-click to mute`;
+            }
+
+            function renderBattery(battery) {
+                if (!battery || !Number.isFinite(battery.chargePercent)) {
+                    batteryEl.hidden = true;
+                    return;
+                }
+                batteryEl.hidden = false;
+                const percent = Math.round(battery.chargePercent);
+                const level = Math.min(10, Math.floor(percent / 10));
+                const charging = [
+                    "\uE85A", "\uE85B", "\uE85C", "\uE85D", "\uE85E", "\uE85F",
+                    "\uE860", "\uE861", "\uE862", "\uE83E", "\uEA93",
+                ];
+                document.getElementById("battery-icon").textContent =
+                    battery.isCharging
+                        ? charging[level]
+                        : level === 10
+                        ? "\uE83F"
+                        : String.fromCharCode(0xe850 + level);
+                batteryEl.title = `${percent}%${
+                    battery.isCharging ? " (charging)" : ""
+                }`;
+            }
+
+            const timeFormat = new Intl.DateTimeFormat(undefined, {
+                hour: "2-digit",
+                minute: "2-digit",
+                hourCycle: "h23",
+            });
+            const dateFormat = new Intl.DateTimeFormat(undefined, {
+                day: "2-digit",
+                month: "2-digit",
+                year: "numeric",
+            });
+            const longDateFormat = new Intl.DateTimeFormat(undefined, {
+                dateStyle: "full",
+            });
+
+            function renderClock(date) {
+                const now = new Date(date?.now ?? Date.now());
+                document.getElementById("clock-time").textContent =
+                    timeFormat.format(now);
+                document.getElementById("clock-date").textContent =
+                    dateFormat.format(now);
+                clockEl.title = longDateFormat.format(now);
             }
 
             let systrayKey = "";
