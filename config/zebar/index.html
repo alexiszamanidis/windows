@@ -353,8 +353,7 @@
                         button.addEventListener("click", () => {
                             unreadWorkspaces.delete(workspace.name);
                             button.classList.remove("unread");
-                            const currentWm =
-                                providers.outputMap.glazewm;
+                            const currentWm = providers.outputMap.glazewm;
                             Promise.resolve(
                                 currentWm?.runCommand(
                                     `focus --workspace ${workspace.name}`
