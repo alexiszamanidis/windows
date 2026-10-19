@@ -262,6 +262,8 @@
 
             const unreadWorkspaces = new Set();
             const previousWindowIdsByWorkspace = new Map();
+            const workspaceButtons = new Map();
+            let workspaceLayoutKey = "";
             let trackedWindows = false;
 
             function pct(value) {
@@ -328,33 +330,54 @@
             function render() {
                 const output = providers.outputMap;
                 const wm = output.glazewm;
-                workspaces.replaceChildren();
                 if (wm) {
                     updateUnread(wm);
-                    for (const workspace of wm.currentWorkspaces) {
+                }
+
+                const currentWorkspaces = wm?.currentWorkspaces ?? [];
+                const layoutKey = JSON.stringify(
+                    currentWorkspaces.map(({ name, displayName }) => [
+                        name,
+                        displayName,
+                    ])
+                );
+                if (layoutKey !== workspaceLayoutKey) {
+                    workspaceLayoutKey = layoutKey;
+                    workspaceButtons.clear();
+                    workspaces.replaceChildren();
+                    for (const workspace of currentWorkspaces) {
                         const button = document.createElement("button");
-                        const focused =
-                            wm.focusedWorkspace?.name === workspace.name;
-                        const displayed =
-                            wm.displayedWorkspace?.name === workspace.name;
-                        const unread = unreadWorkspaces.has(workspace.name);
-                        button.className = focused
-                            ? "focused"
-                            : displayed
-                            ? "displayed"
-                            : unread
-                            ? "unread"
-                            : "";
                         button.textContent =
                             workspace.displayName ?? workspace.name;
+                        workspaceButtons.set(workspace.name, button);
                         button.addEventListener("click", () => {
                             unreadWorkspaces.delete(workspace.name);
-                            wm.runCommand(
-                                `focus --workspace ${workspace.name}`
-                            );
+                            button.classList.remove("unread");
+                            const currentWm =
+                                providers.outputMap.glazewm;
+                            Promise.resolve(
+                                currentWm?.runCommand(
+                                    `focus --workspace ${workspace.name}`
+                                )
+                            ).catch(console.error);
                         });
                         workspaces.appendChild(button);
                     }
+                }
+
+                for (const workspace of currentWorkspaces) {
+                    const button = workspaceButtons.get(workspace.name);
+                    if (!button) {
+                        continue;
+                    }
+                    button.className =
+                        wm?.focusedWorkspace?.name === workspace.name
+                            ? "focused"
+                            : wm?.displayedWorkspace?.name === workspace.name
+                            ? "displayed"
+                            : unreadWorkspaces.has(workspace.name)
+                            ? "unread"
+                            : "";
                 }
 
                 cpuEl.innerHTML = `<span class="label">CPU</span>${pct(

@@ -4,8 +4,11 @@
 
 general:
   startup_commands:
-    - 'shell-exec zebar startup -q'
-    - 'shell-exec --hide-window cmd.exe /c powershell.exe -NoProfile -ExecutionPolicy Bypass -File %USERPROFILE%\.glzr\glazewm\chrome-startup.ps1'
+    - 'shell-exec zebar'
+    - 'shell-exec chrome'
+    - 'shell-exec wt'
+    # - 'shell-exec slack'
+    # - 'shell-exec brave'
   shutdown_commands:
     - 'shell-exec taskkill /IM zebar.exe /F'
   config_reload_commands: []
@@ -15,7 +18,7 @@ general:
     enabled: true
     trigger: 'monitor_focus'
   hide_method: 'cloak'
-  show_all_in_taskbar: false
+  show_all_in_taskbar: true
 
 gaps:
   scale_with_dpi: true
@@ -55,42 +58,29 @@ window_behavior:
       shown_on_top: false
     fullscreen:
       maximized: false
-      shown_on_top: true
+      shown_on_top: false
 
 workspaces:
-  # Left monitor (0): main Chrome profile + editor/terminal.
   - name: '1'
     display_name: '1: chrome'
-    bind_to_monitor: 0
   - name: '2'
     display_name: '2: editor'
-    bind_to_monitor: 0
   - name: '3'
     display_name: '3: terminal'
-    bind_to_monitor: 0
   - name: '4'
     display_name: '4'
-    bind_to_monitor: 0
-  - name: '6'
-    display_name: '6: paint'
-    bind_to_monitor: 0
-  - name: '7'
-    display_name: '7: vpn'
-    bind_to_monitor: 0
-  - name: '8'
-    display_name: '8'
-    bind_to_monitor: 0
-  # Right monitor (1): chat + additional Chrome profiles.
   - name: '5'
     display_name: '5: chat'
-    bind_to_monitor: 1
-
+  - name: '6'
+    display_name: '6: paint'
+  - name: '7'
+    display_name: '7: vpn'
+  - name: '8'
+    display_name: '8'
   - name: '9'
     display_name: '9: spotify'
-    bind_to_monitor: 1
   - name: '10'
     display_name: '10: brave'
-    bind_to_monitor: 1
 
 window_rules:
   - commands: ['ignore']
@@ -100,37 +90,39 @@ window_rules:
       - window_title: { regex: '(?i)picture.in.picture' }
         window_class: { regex: 'Chrome_WidgetWin_1' }
 
-  # Chrome profiles are placed by chrome-startup.ps1 (GlazeWM cannot tell profiles apart).
-  # Pair `move` with `focus` so opening the app also switches to its workspace.
-  - commands: ['move --workspace 2', 'focus --workspace 2']
+  - commands: ['move --workspace 1']
+    match:
+      - window_process: { regex: '(?i)^chrome$' }
+        # window_title: { not_regex: '(?i)excalidraw|picture.in.picture' }
+
+  - commands: ['move --workspace 2']
     match:
       - window_process: { regex: '(?i)^(code|cursor)$' }
 
-  - commands: ['move --workspace 3', 'focus --workspace 3']
+  - commands: ['move --workspace 3']
     match:
-      - window_process: { regex: '(?i)^(windowsterminal|powershell|pwsh|cmd)$' }
+      - window_process: { regex: '(?i)^windowsterminal$' }
 
-  - commands: ['move --workspace 4', 'focus --workspace 4']
-    match:
-      - window_process: { regex: '(?i)^(outlook|olk)$' }
+  # - commands: ['move --workspace 5']
+  #   match:
+  #     - window_process: { regex: '(?i)^slack$' }
 
-  - commands: ['move --workspace 5', 'focus --workspace 5']
-    match:
-      - window_process: { regex: '(?i)^slack$' }
-      - window_process: { regex: '(?i)^discord$' }
+  # - commands: ['move --workspace 6']
+  #   match:
+  #     - window_process: { regex: '(?i)^chrome$' }
+  #       window_title: { regex: '(?i)excalidraw' }
 
-  - commands: ['move --workspace 6', 'focus --workspace 6']
-    match:
-      - window_process: { regex: '(?i)^chrome$' }
-        window_title: { regex: '(?i)excalidraw' }
-
-  - commands: ['move --workspace 7', 'focus --workspace 7']
+  - commands: ['move --workspace 7']
     match:
       - window_process: { regex: '(?i)^forti' }
 
-  - commands: ['move --workspace 9', 'focus --workspace 9']
+  - commands: ['move --workspace 9']
     match:
       - window_process: { regex: '(?i)^spotify$' }
+
+  # - commands: ['move --workspace 10']
+  #   match:
+  #     - window_process: { regex: '(?i)^brave$' }
 
 binding_modes:
   - name: 'resize'

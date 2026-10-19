@@ -362,20 +362,19 @@ Describe "GlazeWM" {
         $config | Should -Match "display_name: '7: vpn'"
         $config | Should -Match "display_name: '9: spotify'"
         $config | Should -Match "display_name: '10: brave'"
-        $config | Should -Match "bind_to_monitor: 0"
-        $config | Should -Match "bind_to_monitor: 1"
+        $config | Should -Match "show_all_in_taskbar: true"
+        $config | Should -Not -Match "keep_alive:\s*true"
         $config | Should -Match "focus --workspace 10"
-        $config | Should -Match "chrome-startup\.ps1"
         $config | Should -Match "shell-exec zebar"
         $startup = if ($config -match '(?s)startup_commands:(.*?)shutdown_commands:') {
             $Matches[1]
         } else {
             ""
         }
-        $startup | Should -Not -Match "shell-exec wt"
+        $startup | Should -Match "'shell-exec wt'"
+        $startup | Should -Match "'shell-exec chrome'"
         $startup | Should -Not -Match "shell-exec slack"
         $startup | Should -Not -Match "shell-exec brave"
-        $startup | Should -Not -Match "'shell-exec chrome'"
         $config | Should -Match "shell-exec wt"
         $config | Should -Match "top: '40px'"
         $config | Should -Match "equals: 'zebar'"
@@ -400,7 +399,6 @@ Describe "GlazeWM" {
         $config = [System.IO.File]::ReadAllText($configPath)
         $config | Should -Match "display_name: '1: chrome'"
         $config | Should -Match "move --workspace 2"
-        $config | Should -Match "chrome-startup\.ps1"
         $linkedConfig = Get-Item -LiteralPath $configPath
         $linkedConfig.LinkType | Should -Be "SymbolicLink"
         @($linkedConfig.Target)[0] | Should -Be (Resolve-Path ./config/glazewm.yaml).Path
@@ -487,6 +485,7 @@ Describe "GlazeWM" {
         $bar = [System.IO.File]::ReadAllText((Join-Path $directory "workspaces\index.html"))
         $bar | Should -Match "currentWorkspaces"
         $bar | Should -Match "unread"
+        $bar | Should -Match "workspaceLayoutKey"
         $bar | Should -Match 'type: "systray"'
         $bar | Should -Not -Match 'type: "audio"'
         $bar | Should -Match "volume\.ps1"
