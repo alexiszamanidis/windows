@@ -164,7 +164,6 @@ namespace WindowsSetup {
                                 break;
                             }
                         }
-                        Thread.Sleep(400);
                         Process.Start(executable);
                     } catch {
                     }
@@ -198,7 +197,6 @@ namespace WindowsSetup {
                                 break;
                             }
                         }
-                        Thread.Sleep(400);
                         Process.Start(executable);
                         SetWindowQuery();
                     } catch {

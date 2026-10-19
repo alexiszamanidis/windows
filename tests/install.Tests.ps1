@@ -186,6 +186,7 @@ Describe "Flow Launcher hotkey" {
         $capture = Get-Content ./config/flow-launcher-hotkey.ps1 -Raw
         $capture | Should -Match "SearchWindows"
         $capture | Should -Match "QueryTextBox"
+        $capture | Should -Not -Match "Thread\.Sleep\(400\)"
     }
 
     It "adds Win+P without dropping other disabled shortcuts" {
