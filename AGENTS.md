@@ -15,14 +15,18 @@
 -   `config/`: source files deployed to Windows. Make repository changes here, not in deployed copies, unless the user explicitly requests a live-only change.
 -   `tests/install.Tests.ps1`: Pester tests for installer behavior and config expectations.
 -   `.github/workflows/validate.yml`: CI PowerShell parsing, PSScriptAnalyzer, Pester, and installer behavior checks.
+-   `.github/workflows/format.yml`: reusable Prettier formatting workflow.
 -   `README.md`: installation, task selection, and project overview.
 
 ## Validation
 
+-   When changing a config, installer behavior, or its tests, search for all related assertions in both `tests/` and `.github/workflows/`. Update stale expectations when behavior intentionally changes, but retain separate checks for still-required behavior (for example, deploying a helper file does not require referencing it from the config).
+-   For a CI failure, inspect the failing workflow step and assertion, reproduce that exact condition against the checked-in source, and fix the underlying mismatch. Validate the intended new behavior and nearby regression cases before finishing; do not stop after changing the first failing assertion.
 -   For PowerShell or installer changes, run the narrowest relevant Pester test when Pester 5+ is already available:
     `Invoke-Pester -Path ./tests/install.Tests.ps1 -Output Detailed`
 -   For PowerShell-only syntax changes, the PowerShell parser can check just the edited script. CI additionally runs PSScriptAnalyzer and installer behavior checks.
--   For HTML or JavaScript changes, validate the edited file with an available targeted check. Avoid running `npm run format` as a validation command: it writes formatting across the repository, and Prettier does not cover the YAML files excluded by `.prettierignore`.
+-   For formatting, run Prettier only on the changed supported files (for example, `npx prettier --check <files>` or `npx prettier --write <files>` when dependencies are already installed), then inspect the diff. Do not use `npm run format` for a targeted change: it writes across the repository. `.prettierignore` excludes YAML, so Prettier does not validate GlazeWM or workflow YAML; check those changes separately.
+-   For HTML or JavaScript changes, validate the edited file with an available targeted check.
 -   Do not claim tests passed if a tool is missing or a check was skipped; report the limitation concisely. CI may install Pester and PSScriptAnalyzer, but local tasks should not install them without the user's request.
 
 ## Windows configuration cautions
