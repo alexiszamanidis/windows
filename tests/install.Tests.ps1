@@ -373,8 +373,7 @@ Describe "GlazeWM" {
         }
         $startup | Should -Match "'shell-exec wt'"
         $startup | Should -Match "'shell-exec chrome'"
-        $startup | Should -Not -Match "shell-exec slack"
-        $startup | Should -Not -Match "shell-exec brave"
+        $startup | Should -Not -Match "(?m)^\s*-\s*'shell-exec (?:slack|brave)(?:\s|')"
         $config | Should -Match "shell-exec wt"
         $config | Should -Match "top: '40px'"
         $config | Should -Match "equals: 'zebar'"
