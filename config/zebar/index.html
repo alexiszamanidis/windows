@@ -578,8 +578,9 @@
                         .formatToParts(now)
                         .map(({ type, value }) => [type, value])
                 );
-                document.getElementById("clock-date").textContent =
-                    `${dateParts.weekday} ${dateParts.day}/${dateParts.month}/${dateParts.year}`;
+                document.getElementById(
+                    "clock-date"
+                ).textContent = `${dateParts.weekday} ${dateParts.day}/${dateParts.month}/${dateParts.year}`;
                 clockEl.title = longDateFormat.format(now);
             }
 
