@@ -560,6 +560,7 @@
                 hourCycle: "h23",
             });
             const dateFormat = new Intl.DateTimeFormat(undefined, {
+                weekday: "long",
                 day: "2-digit",
                 month: "2-digit",
                 year: "numeric",
@@ -572,8 +573,13 @@
                 const now = new Date(date?.now ?? Date.now());
                 document.getElementById("clock-time").textContent =
                     timeFormat.format(now);
+                const dateParts = Object.fromEntries(
+                    dateFormat
+                        .formatToParts(now)
+                        .map(({ type, value }) => [type, value])
+                );
                 document.getElementById("clock-date").textContent =
-                    dateFormat.format(now);
+                    `${dateParts.weekday} ${dateParts.day}/${dateParts.month}/${dateParts.year}`;
                 clockEl.title = longDateFormat.format(now);
             }
 
