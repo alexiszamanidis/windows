@@ -4,13 +4,19 @@
     "version": "1.0.0",
     "description": "This repository installs Windows applications",
     "scripts": {
-        "format": "prettier . --write"
+        "format": "prettier . --write",
+        "prepare": "husky"
     },
     "author": "Alexis Zamanidis",
     "license": "MIT",
     "devDependencies": {
         "prettier": "^2.8.0",
-        "@alexiszamanidis/prettier-config": "1.0.1"
+        "@alexiszamanidis/prettier-config": "1.0.1",
+        "husky": "^9.1.7",
+        "lint-staged": "^15.5.2"
     },
-    "prettier": "@alexiszamanidis/prettier-config"
+    "prettier": "@alexiszamanidis/prettier-config",
+    "lint-staged": {
+        "!(*.yml|*.yaml)": "prettier --write --ignore-unknown"
+    }
 }
