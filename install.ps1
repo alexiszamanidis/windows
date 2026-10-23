@@ -10,7 +10,7 @@ $packagesFile = if ($installerRoot) {
     Join-Path $env:TEMP "windows-packages.txt"
 }
 
-$knownTasks = @("DarkMode", "Wallpaper", "Explorer", "LongPaths", "Git", "Packages", "FlowLauncher", "GlazeWM", "InputLeap", "Wsl", "Font", "Terminal")
+$knownTasks = @("DarkMode", "Wallpaper", "Explorer", "LongPaths", "Git", "Packages", "FlowLauncher", "GlazeWM", "InputLeap", "Wsl", "Font", "Terminal", "Node")
 $selectedTasks = $null
 # A param block would break `irm ... | iex`, so a file run takes the task list as its first argument.
 if ($PSCommandPath -and $args.Count -gt 0) {
@@ -62,6 +62,7 @@ $installerTasks = @(
     "tasks/InputLeap.ps1"
     "tasks/Wsl.ps1"
     "tasks/Terminal.ps1"
+    "tasks/Node.ps1"
 )
 foreach ($relativePath in $installerTasks) {
     if ($installerRoot) {
@@ -152,4 +153,7 @@ if (Test-SelectedTask "Font") {
 }
 if (Test-SelectedTask "Terminal") {
     Set-WindowsTerminalSetting
+}
+if (Test-SelectedTask "Node") {
+    Set-NodeVersion
 }

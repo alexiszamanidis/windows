@@ -169,6 +169,76 @@ Describe "WinGet packages" {
     }
 }
 
+Describe "Node.js" {
+    BeforeEach {
+        $script:TestFunctionOverride.Clear()
+        $script:nvmCalls = @()
+        $script:nvmExecutables = @()
+        Add-TestFunction Get-NodeVersionManagerPath { return "test-nvm" }
+        Add-TestFunction Invoke-NodeVersionManager {
+            param(
+                [string]$Executable,
+                [string[]]$Argument
+            )
+            $script:nvmCalls += ,($Argument -join " ")
+            $script:nvmExecutables += $Executable
+        }
+    }
+
+    It "checks nvm-windows' default LocalAppData install directory" {
+        $previousLocalAppData = $env:LOCALAPPDATA
+        try {
+            $env:LOCALAPPDATA = $TestDrive
+            Get-NodeVersionManagerHomePath | Should -Contain (Join-Path $TestDrive "nvm")
+        } finally {
+            $env:LOCALAPPDATA = $previousLocalAppData
+        }
+    }
+
+    It "installs and selects Node.js 16.16.0 through nvm" {
+        Set-NodeVersion
+
+        $script:nvmCalls | Should -HaveCount 2
+        $script:nvmExecutables | Should -Be @("test-nvm", "test-nvm")
+        $script:nvmCalls[0] | Should -Be "install 16.16.0"
+        $script:nvmCalls[1] | Should -Be "use 16.16.0"
+    }
+
+    It "installs nvm-windows when it is not available" {
+        $script:nvmLookupCount = 0
+        $script:installedNvmPackage = $null
+        $script:installedNvmPackageOption = $null
+        Add-TestFunction Get-NodeVersionManagerPath {
+            $script:nvmLookupCount++
+            if ($script:nvmLookupCount -eq 1) {
+                return $null
+            }
+            return "test-nvm"
+        }
+        Add-TestFunction Install-RequestedPackage {
+            param(
+                [string]$Id,
+                [hashtable]$Option
+            )
+            $script:installedNvmPackage = $Id
+            $script:installedNvmPackageOption = $Option
+        }
+
+        Set-NodeVersion
+
+        $script:installedNvmPackage | Should -Be "CoreyButler.NVMforWindows"
+        $script:installedNvmPackageOption | Should -BeOfType [hashtable]
+        $script:nvmCalls | Should -HaveCount 2
+    }
+
+    It "reports when nvm cannot be found after installation" {
+        Add-TestFunction Get-NodeVersionManagerPath { return $null }
+        Add-TestFunction Install-RequestedPackage { }
+
+        { Set-NodeVersion } | Should -Throw "*nvm.exe could not be found*"
+    }
+}
+
 Describe "Flow Launcher hotkey" {
     BeforeEach {
         $script:TestFunctionOverride.Clear()

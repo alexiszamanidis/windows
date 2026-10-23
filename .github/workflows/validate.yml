@@ -99,10 +99,19 @@ jobs:
             }
           }
 
+          $global:nvmCalls = [System.Collections.Generic.List[string]]::new()
+          function global:nvm {
+            $global:nvmCalls.Add(($args -join " "))
+            $global:LASTEXITCODE = 0
+          }
+
           & ./install.ps1
 
           if ($global:wingetCalls.Count -ne $packages.Count) {
             throw "Expected $($packages.Count) WinGet calls, got $($global:wingetCalls.Count)."
+          }
+          if (($global:nvmCalls -join ",") -ne "install 16.16.0,use 16.16.0") {
+            throw "The Node task did not install and select Node.js 16.16.0 through nvm."
           }
 
           foreach ($id in $packages) {
@@ -312,6 +321,7 @@ jobs:
           $rebootOutput = pwsh -NoProfile -Command @'
           $ErrorActionPreference = "Stop"
           function global:winget { $global:LASTEXITCODE = 0 }
+          function global:nvm { $global:LASTEXITCODE = 0 }
           function global:wsl {
             $global:LASTEXITCODE = 1
             if ($args -contains "--no-distribution") {

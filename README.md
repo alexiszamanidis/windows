@@ -33,6 +33,7 @@ The URL follows the repository default branch. The one-liner runs every task. Se
 -   Long paths in Windows and Git `core.longpaths`
 -   Git name, email, pull rebase, default branch and fetch prune. The credential helper is `manager`
 -   The WinGet packages in `config/packages.txt`
+-   nvm-windows and Node.js 16.16.0, selected through nvm-windows
 -   Flow Launcher opens with Win+P and starts at login. Win+Shift+P searches open windows. Windows is told to stop using Win+P for the project screen. If Windows still takes Win+P, a login helper opens Flow Launcher instead
 -   GlazeWM follows the i3 config: the Windows key, the ten workspaces and the window assignments. A top bar lists the workspaces. Win+P stays with Flow Launcher. GlazeWM starts at login
 -   The Input Leap server layout. Desktop is on the left and the Linux client is on the right. The server starts at login
@@ -41,7 +42,7 @@ The URL follows the repository default branch. The one-liner runs every task. Se
 
 ### Packages
 
-`config/packages.txt` is one WinGet package ID per line. Lines starting with `#` are ignored. Installer options that are not the same for every package live in `config/packages.psd1`. WhatsApp is installed from the Microsoft Store source. Input Leap is installed silently, its processes are closed first, and the install is retried once if the installer reports that it was cancelled.
+`config/packages.txt` is one WinGet package ID per line. Lines starting with `#` are ignored. Installer options that are not the same for every package live in `config/packages.psd1`. WhatsApp is installed from the Microsoft Store source. Input Leap is installed silently, its processes are closed first, and the install is retried once if the installer reports that it was cancelled. The `Node` task uses nvm-windows to install and select Node.js 16.16.0.
 
 ### Tasks
 
@@ -56,4 +57,4 @@ Select-String -Path .\install.ps1 -Pattern '^\$knownTasks'
 .\install.ps1 DarkMode,Wallpaper,Explorer,LongPaths
 ```
 
-The task names are `DarkMode`, `Wallpaper`, `Explorer`, `LongPaths`, `Git`, `Packages`, `FlowLauncher`, `GlazeWM`, `InputLeap`, `Wsl`, `Font` and `Terminal`. A file run takes that list as its first argument. A file run needs a process execution policy that allows unsigned scripts: `powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 Packages`. The one-liner cannot take arguments, so set `WINDOWS_TASKS` before running it. Long paths and the Git identity are applied when Git is already installed.
+The task names are `DarkMode`, `Wallpaper`, `Explorer`, `LongPaths`, `Git`, `Packages`, `FlowLauncher`, `GlazeWM`, `InputLeap`, `Wsl`, `Font`, `Terminal` and `Node`. A file run takes that list as its first argument. A file run needs a process execution policy that allows unsigned scripts: `powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 Node`. The one-liner cannot take arguments, so set `WINDOWS_TASKS` before running it. Long paths and the Git identity are applied when Git is already installed.

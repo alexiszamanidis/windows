@@ -15,6 +15,7 @@ Rakuten.Viber
 Git.Git
 Anysphere.Cursor
 Microsoft.VisualStudioCode
+CoreyButler.NVMforWindows
 
 # Desktop
 glzr-io.glazewm
