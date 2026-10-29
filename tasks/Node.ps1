@@ -59,7 +59,7 @@ function Set-NodeVersion {
     [CmdletBinding(SupportsShouldProcess)]
     param()
 
-    $nodeVersion = "16.16.0"
+    $nodeVersion = "26.13.0"
     $nvmPackageId = "CoreyButler.NVMforWindows"
 
     if (-not $PSCmdlet.ShouldProcess("Node.js $nodeVersion via nvm-windows")) {

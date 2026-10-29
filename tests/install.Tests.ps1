@@ -195,13 +195,13 @@ Describe "Node.js" {
         }
     }
 
-    It "installs and selects Node.js 16.16.0 through nvm" {
+    It "installs and selects Node.js 26.13.0 through nvm" {
         Set-NodeVersion
 
         $script:nvmCalls | Should -HaveCount 2
         $script:nvmExecutables | Should -Be @("test-nvm", "test-nvm")
-        $script:nvmCalls[0] | Should -Be "install 16.16.0"
-        $script:nvmCalls[1] | Should -Be "use 16.16.0"
+        $script:nvmCalls[0] | Should -Be "install 26.13.0"
+        $script:nvmCalls[1] | Should -Be "use 26.13.0"
     }
 
     It "installs nvm-windows when it is not available" {

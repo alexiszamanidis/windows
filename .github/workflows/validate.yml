@@ -110,8 +110,8 @@ jobs:
           if ($global:wingetCalls.Count -ne $packages.Count) {
             throw "Expected $($packages.Count) WinGet calls, got $($global:wingetCalls.Count)."
           }
-          if (($global:nvmCalls -join ",") -ne "install 16.16.0,use 16.16.0") {
-            throw "The Node task did not install and select Node.js 16.16.0 through nvm."
+          if (($global:nvmCalls -join ",") -ne "install 26.13.0,use 26.13.0") {
+            throw "The Node task did not install and select Node.js 26.13.0 through nvm."
           }
 
           foreach ($id in $packages) {
