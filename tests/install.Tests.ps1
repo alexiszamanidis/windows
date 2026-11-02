@@ -70,8 +70,52 @@ Describe "Repository bootstrap" {
         $text | Should -Not -Match "alexiszamanidis/windows/master/"
         $text | Should -Match '\$repoRef = "HEAD"'
         $text | Should -Match "config/packages\.txt"
+        $text | Should -Match "config/packages\.psd1"
+        $text | Should -Match "config/node\.psd1"
+        $text | Should -Match "config/git\.psd1"
+        $text | Should -Match "config/wsl\.psd1"
         $text | Should -Match "config/glazewm\.yaml"
         $text | Should -Match "config/zebar/zpack\.json"
+    }
+}
+
+Describe "Installer configuration" {
+    BeforeAll {
+        $script:nodeConfig = Import-PowerShellDataFile ./config/node.psd1
+        $script:gitConfig = Import-PowerShellDataFile ./config/git.psd1
+        $script:wslConfig = Import-PowerShellDataFile ./config/wsl.psd1
+        $script:packageOptions = Import-PowerShellDataFile ./config/packages.psd1
+        $script:packageIds = Get-InstallerPackageId -Path (Join-Path $script:installerRoot "config\packages.txt")
+    }
+
+    It "resolves repository config files from the checkout" {
+        Get-InstallerConfigPath -RelativePath "config/node.psd1" | Should -Be (Join-Path $script:installerRoot "config\node.psd1")
+    }
+
+    It "stores the Node.js version and nvm package in one file" {
+        $script:nodeConfig.Version | Should -Match '^\d+\.\d+\.\d+$'
+        $script:nodeConfig.PackageId | Should -Match '^\S+$'
+        $script:packageIds | Should -Not -Contain ([string]$script:nodeConfig.PackageId)
+    }
+
+    It "stores the Git identity in one file" {
+        foreach ($name in @("user.name", "user.email", "pull.rebase", "init.defaultBranch", "fetch.prune", "credential.helper")) {
+            $script:gitConfig[$name] | Should -Not -BeNullOrEmpty
+        }
+    }
+
+    It "stores the WSL distro in one file" {
+        $script:wslConfig.Distribution | Should -Match '^\S+$'
+    }
+
+    It "keeps package options on packages the installer installs" {
+        $allowed = @("Source", "Silent", "Custom", "Processes", "Service", "RetryOnCancel")
+        foreach ($id in $script:packageOptions.Keys) {
+            $script:packageIds | Should -Contain $id
+            foreach ($key in @($script:packageOptions[$id].Keys)) {
+                $allowed | Should -Contain $key
+            }
+        }
     }
 }
 
@@ -127,6 +171,10 @@ Describe "Wallpaper" {
 }
 
 Describe "WinGet packages" {
+    BeforeAll {
+        $script:packageOptions = Import-PowerShellDataFile ./config/packages.psd1
+    }
+
     BeforeEach {
         $script:TestFunctionOverride.Clear()
         $script:wingetCalls = [System.Collections.Generic.List[string]]::new()
@@ -140,26 +188,32 @@ Describe "WinGet packages" {
         }
     }
 
-    It "installs the Store package from msstore" {
+    It "installs a package from the source named in packages.psd1" {
+        $packageId = @($script:packageOptions.Keys | Where-Object { $script:packageOptions[$_].Source }) | Select-Object -First 1
+        $packageId | Should -Not -BeNullOrEmpty
+        $option = $script:packageOptions[$packageId]
         $script:wingetResults.Enqueue(0)
-        Install-WinGetPackage -Id "9NKSQGP7F2NH" -Option @{ Source = "msstore" }
+        Install-WinGetPackage -Id $packageId -Option $option
         $script:wingetCalls.Count | Should -Be 1
-        $script:wingetCalls[0] | Should -Match "--source msstore"
-        $script:wingetCalls[0] | Should -Match "--id 9NKSQGP7F2NH --exact"
+        $script:wingetCalls[0] | Should -Match "--source $([regex]::Escape([string]$option.Source))"
+        $script:wingetCalls[0] | Should -Match "--id $([regex]::Escape([string]$packageId)) --exact"
     }
 
-    It "retries Input Leap once when the installer is cancelled" {
+    It "retries a package once when its manifest requests another attempt" {
+        $packageId = @($script:packageOptions.Keys | Where-Object { $script:packageOptions[$_].RetryOnCancel }) | Select-Object -First 1
+        $packageId | Should -Not -BeNullOrEmpty
+        $option = $script:packageOptions[$packageId]
         $script:wingetResults.Enqueue($script:wingetInstallCancelled)
         $script:wingetResults.Enqueue(0)
-        Install-RequestedPackage -Id "input-leap.input-leap" -Option @{
-            Silent        = $true
-            Custom        = "/FORCECLOSEAPPLICATIONS"
-            RetryOnCancel = $true
-        }
+        Install-RequestedPackage -Id $packageId -Option $option
         $script:wingetCalls.Count | Should -Be 2
-        $script:wingetCalls[0] | Should -Match "--silent"
-        $script:wingetCalls[0] | Should -Match "--custom /FORCECLOSEAPPLICATIONS"
-        $script:wingetCalls[1] | Should -Match "--id input-leap.input-leap --exact"
+        if ($option.Silent) {
+            $script:wingetCalls[0] | Should -Match "--silent"
+        }
+        if ($option.Custom) {
+            $script:wingetCalls[0] | Should -Match "--custom $([regex]::Escape([string]$option.Custom))"
+        }
+        $script:wingetCalls[1] | Should -Match "--id $([regex]::Escape([string]$packageId)) --exact"
     }
 
     It "does not retry a cancelled install without RetryOnCancel" {
@@ -170,6 +224,10 @@ Describe "WinGet packages" {
 }
 
 Describe "Node.js" {
+    BeforeAll {
+        $script:nodeConfig = Import-PowerShellDataFile ./config/node.psd1
+    }
+
     BeforeEach {
         $script:TestFunctionOverride.Clear()
         $script:nvmCalls = @()
@@ -195,13 +253,13 @@ Describe "Node.js" {
         }
     }
 
-    It "installs and selects Node.js 26.13.0 through nvm" {
+    It "installs and selects the configured Node.js version" {
         Set-NodeVersion
 
         $script:nvmCalls | Should -HaveCount 2
         $script:nvmExecutables | Should -Be @("test-nvm", "test-nvm")
-        $script:nvmCalls[0] | Should -Be "install 26.13.0"
-        $script:nvmCalls[1] | Should -Be "use 26.13.0"
+        $script:nvmCalls[0] | Should -Be "install $($script:nodeConfig.Version)"
+        $script:nvmCalls[1] | Should -Be "use $($script:nodeConfig.Version)"
     }
 
     It "installs nvm-windows when it is not available" {
@@ -226,7 +284,7 @@ Describe "Node.js" {
 
         Set-NodeVersion
 
-        $script:installedNvmPackage | Should -Be "CoreyButler.NVMforWindows"
+        $script:installedNvmPackage | Should -Be ([string]$script:nodeConfig.PackageId)
         $script:installedNvmPackageOption | Should -BeOfType [hashtable]
         $script:nvmCalls | Should -HaveCount 2
     }
@@ -568,5 +626,85 @@ Describe "GlazeWM" {
     It "leaves an existing workspace bar entry in place" {
         $json = '{"startupConfigs": [{"pack": "workspaces", "widget": "bar", "preset": "default"}]}'
         Add-ZebarStartupConfig -Json $json | Should -Be $json
+    }
+}
+
+Describe "WSL" {
+    BeforeAll {
+        $script:wslDistribution = [string](Import-PowerShellDataFile ./config/wsl.psd1).Distribution
+    }
+
+    BeforeEach {
+        $script:TestFunctionOverride.Clear()
+        $script:wslCalls = [System.Collections.Generic.List[string]]::new()
+        $script:wslList = [string[]]@("  NAME      STATE           VERSION")
+        Add-TestFunction Get-WslOutput {
+            param([string[]]$Arguments)
+            $script:wslCalls.Add(($Arguments -join " "))
+            $lines = if ($Arguments -contains "--list") { $script:wslList } else { [string[]]@() }
+            return [pscustomobject]@{
+                ExitCode = 0
+                Output   = ($lines -join "`n")
+                Lines    = $lines
+            }
+        }
+    }
+
+    It "installs the configured distro when WSL has none" {
+        Install-WslUbuntu
+
+        $script:wslCalls | Should -Contain "--set-default-version 2"
+        $script:wslCalls | Should -Contain "--install --distribution $($script:wslDistribution) --no-launch --web-download"
+        $script:wslCalls | Should -Contain "--set-default $($script:wslDistribution)"
+    }
+
+    It "keeps an installed distro with the configured name" {
+        $script:wslList = [string[]]@(
+            "  NAME      STATE           VERSION"
+            "* $($script:wslDistribution)    Stopped         2"
+        )
+
+        Install-WslUbuntu
+
+        @($script:wslCalls | Where-Object { $_ -match "--distribution " }) | Should -BeNullOrEmpty
+        $script:wslCalls | Should -Contain "--set-default $($script:wslDistribution)"
+    }
+
+    It "converts a versioned distro name to WSL2" {
+        $versioned = "$($script:wslDistribution)-24.04"
+        $script:wslList = [string[]]@(
+            "  NAME      STATE           VERSION"
+            "  $versioned    Stopped         1"
+        )
+
+        Install-WslUbuntu
+
+        @($script:wslCalls | Where-Object { $_ -match "--distribution " }) | Should -BeNullOrEmpty
+        $script:wslCalls | Should -Contain "--set-version $versioned 2"
+        $script:wslCalls | Should -Contain "--set-default $versioned"
+        Get-PreferredWslDistroName | Should -Be $versioned
+    }
+
+    It "stops when WSL asks for a restart" {
+        Add-TestFunction Get-WslOutput {
+            param([string[]]$Arguments)
+            $script:wslCalls.Add(($Arguments -join " "))
+            return [pscustomobject]@{
+                ExitCode = 1
+                Output   = "Changes will not be effective until the system is rebooted."
+                Lines    = [string[]]@("Changes will not be effective until the system is rebooted.")
+            }
+        }
+
+        Install-WslUbuntu
+
+        @($script:wslCalls | Where-Object { $_ -match "--distribution " }) | Should -BeNullOrEmpty
+    }
+}
+
+Describe "Windows Terminal profiles" {
+    It "uses Windows Terminal's profile id for a distro name" {
+        (Get-WslTerminalProfileGuid -DistroName "Ubuntu").Trim("{}") | Should -Be "2c4de342-38b7-51cf-b940-2309a097f518"
+        (Get-WslTerminalProfileGuid -DistroName "Ubuntu-24.04").Trim("{}") | Should -Be "963ff2f7-6aed-5ce3-9d91-90d99571f53a"
     }
 }

@@ -59,8 +59,12 @@ function Set-NodeVersion {
     [CmdletBinding(SupportsShouldProcess)]
     param()
 
-    $nodeVersion = "26.13.0"
-    $nvmPackageId = "CoreyButler.NVMforWindows"
+    $node = Import-InstallerDataFile -RelativePath "config/node.psd1"
+    $nodeVersion = [string]$node.Version
+    $nvmPackageId = [string]$node.PackageId
+    if ([string]::IsNullOrWhiteSpace($nodeVersion) -or [string]::IsNullOrWhiteSpace($nvmPackageId)) {
+        throw "config/node.psd1 must set Version and PackageId."
+    }
 
     if (-not $PSCmdlet.ShouldProcess("Node.js $nodeVersion via nvm-windows")) {
         return

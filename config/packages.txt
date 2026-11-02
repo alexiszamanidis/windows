@@ -15,7 +15,7 @@ Rakuten.Viber
 Git.Git
 Anysphere.Cursor
 Microsoft.VisualStudioCode
-CoreyButler.NVMforWindows
+# nvm-windows is installed by the Node task from config/node.psd1.
 
 # Desktop
 glzr-io.glazewm

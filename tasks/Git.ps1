@@ -51,13 +51,11 @@ function Set-GitIdentity {
         return
     }
 
-    $settings = [ordered]@{
-        "user.name"           = "alexiszamanidis"
-        "user.email"          = "alexiszamanidis@outlook.com"
-        "pull.rebase"         = "true"
-        "init.defaultBranch"  = "master"
-        "fetch.prune"         = "true"
-        "credential.helper"   = "manager"
+    $settings = Import-InstallerDataFile -RelativePath "config/git.psd1"
+    foreach ($name in @("user.name", "user.email", "pull.rebase", "init.defaultBranch", "fetch.prune", "credential.helper")) {
+        if (-not $settings.ContainsKey($name) -or [string]::IsNullOrWhiteSpace([string]$settings[$name])) {
+            throw "config/git.psd1 must set $name."
+        }
     }
 
     foreach ($name in $settings.Keys) {

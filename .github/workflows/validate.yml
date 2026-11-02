@@ -84,6 +84,21 @@ jobs:
             throw "packages.txt contains duplicate IDs: $($duplicates.Name -join ', ')"
           }
 
+          $node = Import-PowerShellDataFile ./config/node.psd1
+          $gitConfig = Import-PowerShellDataFile ./config/git.psd1
+          $wslConfig = Import-PowerShellDataFile ./config/wsl.psd1
+          $packageOptions = Import-PowerShellDataFile ./config/packages.psd1
+          $distribution = [string]$wslConfig.Distribution
+          if ([string]::IsNullOrWhiteSpace([string]$node.Version) -or [string]::IsNullOrWhiteSpace([string]$node.PackageId)) {
+            throw "config/node.psd1 must set Version and PackageId."
+          }
+          if ([string]::IsNullOrWhiteSpace($distribution)) {
+            throw "config/wsl.psd1 must set Distribution."
+          }
+          if ($packages -contains [string]$node.PackageId) {
+            throw "config/node.psd1 PackageId is also listed in packages.txt. The Node task owns that package."
+          }
+
           $global:wingetCalls = [System.Collections.Generic.List[string]]::new()
           function global:winget {
             $global:wingetCalls.Add(($args -join " "))
@@ -110,8 +125,9 @@ jobs:
           if ($global:wingetCalls.Count -ne $packages.Count) {
             throw "Expected $($packages.Count) WinGet calls, got $($global:wingetCalls.Count)."
           }
-          if (($global:nvmCalls -join ",") -ne "install 26.13.0,use 26.13.0") {
-            throw "The Node task did not install and select Node.js 26.13.0 through nvm."
+          $expectedNvm = "install $($node.Version),use $($node.Version)"
+          if (($global:nvmCalls -join ",") -ne $expectedNvm) {
+            throw "The Node task did not install and select Node.js $($node.Version) through nvm."
           }
 
           foreach ($id in $packages) {
@@ -120,22 +136,29 @@ jobs:
             }
           }
 
-          $inputLeapCall = @($global:wingetCalls | Where-Object { $_ -match "--id input-leap.input-leap " })
-          if ($inputLeapCall.Count -ne 1 -or $inputLeapCall[0] -notmatch "--silent" -or $inputLeapCall[0] -notmatch "--custom /FORCECLOSEAPPLICATIONS") {
-            throw "Input Leap was not installed with its manifest options."
-          }
-
-          $storeCall = @($global:wingetCalls | Where-Object { $_ -match "--id 9NKSQGP7F2NH " })
-          if ($storeCall.Count -ne 1 -or $storeCall[0] -notmatch "--source msstore") {
-            throw "WhatsApp was not installed from the Microsoft Store source."
+          foreach ($id in $packageOptions.Keys) {
+            $option = $packageOptions[$id]
+            $call = @($global:wingetCalls | Where-Object { $_ -match "--id $([regex]::Escape([string]$id)) " })
+            if ($call.Count -ne 1) {
+              throw "install.ps1 did not request the package '$id' once."
+            }
+            if ($option.Source -and $call[0] -notmatch "--source $([regex]::Escape([string]$option.Source))( |$)") {
+              throw "$id was not installed from source '$($option.Source)'."
+            }
+            if ($option.Silent -and $call[0] -notmatch "--silent") {
+              throw "$id was not installed silently."
+            }
+            if ($option.Custom -and $call[0] -notmatch "--custom $([regex]::Escape([string]$option.Custom))( |$)") {
+              throw "$id was not installed with custom argument '$($option.Custom)'."
+            }
           }
 
           if (-not ($global:wslCalls -match "--set-default-version 2")) {
             throw "install.ps1 did not set WSL2 as the default version."
           }
 
-          if (-not ($global:wslCalls -match "--install --distribution Ubuntu --no-launch --web-download")) {
-            throw "install.ps1 did not request Ubuntu on WSL."
+          if (-not ($global:wslCalls -match "--install --distribution $([regex]::Escape($distribution)) --no-launch --web-download")) {
+            throw "install.ps1 did not request $distribution on WSL."
           }
 
           if ($global:wslCalls -match "ansible") {
@@ -165,11 +188,16 @@ jobs:
           }
 
           $terminalSettings = Get-ProvisionedTerminalSettings
+          . ./tasks/Terminal.ps1
+          $distributionGuid = (Get-WslTerminalProfileGuid -DistroName $distribution).Trim("{}")
           if ($terminalSettings -notmatch "Hack Nerd Font Mono") {
             throw "Windows Terminal settings do not use Hack Nerd Font Mono."
           }
-          if ($terminalSettings -notmatch "2c4de342-38b7-51cf-b940-2309a097f518") {
-            throw "Windows Terminal settings do not use the Ubuntu profile GUID."
+          if ($terminalSettings -notmatch [regex]::Escape($distributionGuid)) {
+            throw "Windows Terminal settings do not use the profile GUID for $distribution."
+          }
+          if ($terminalSettings -notmatch [regex]::Escape("wsl.exe -d $distribution")) {
+            throw "Windows Terminal profile was not pointed at $distribution."
           }
           if ($terminalSettings -match "Ubuntu 20.04|DroidSansMono|__WSL_") {
             throw "Windows Terminal settings still contain a stale profile or placeholder."
@@ -179,18 +207,10 @@ jobs:
             throw "Hack Nerd Font Mono was not installed."
           }
 
-          $gitExpectations = @{
-            "user.name" = "alexiszamanidis"
-            "user.email" = "alexiszamanidis@outlook.com"
-            "pull.rebase" = "true"
-            "init.defaultBranch" = "master"
-            "fetch.prune" = "true"
-            "credential.helper" = "manager"
-          }
-          foreach ($name in $gitExpectations.Keys) {
+          foreach ($name in $gitConfig.Keys) {
             $value = git config --global --get $name
-            if ($LASTEXITCODE -ne 0 -or $value -ne $gitExpectations[$name]) {
-              throw "Git $name is '$value', expected '$($gitExpectations[$name])'."
+            if ($LASTEXITCODE -ne 0 -or $value -ne [string]$gitConfig[$name]) {
+              throw "Git $name is '$value', expected '$($gitConfig[$name])'."
             }
           }
 
@@ -269,21 +289,22 @@ jobs:
             if ($args -contains "--list") {
               return @(
                 "  NAME      STATE           VERSION"
-                "* Ubuntu    Stopped         2"
+                "* $distribution    Stopped         2"
               )
             }
           }
 
           & ./install.ps1
 
-          if ($global:wslCalls -match "--distribution Ubuntu") {
-            throw "install.ps1 tried to install Ubuntu even though it is already installed."
+          if ($global:wslCalls -match "--distribution $([regex]::Escape($distribution))( |$)") {
+            throw "install.ps1 tried to install $distribution even though it is already installed."
           }
 
-          if (-not ($global:wslCalls -match "--set-default Ubuntu")) {
-            throw "install.ps1 did not keep Ubuntu as the default WSL distro."
+          if (-not ($global:wslCalls -match "--set-default $([regex]::Escape($distribution))( |$)")) {
+            throw "install.ps1 did not keep $distribution as the default WSL distro."
           }
 
+          $versionedDistribution = "$distribution-24.04"
           $global:wslCalls = [System.Collections.Generic.List[string]]::new()
           function global:wsl {
             $global:wslCalls.Add(($args -join " "))
@@ -291,31 +312,32 @@ jobs:
             if ($args -contains "--list") {
               return @(
                 "  NAME      STATE           VERSION"
-                "  Ubuntu-24.04    Stopped         1"
+                "  $versionedDistribution    Stopped         1"
               )
             }
           }
 
           & ./install.ps1
 
-          if ($global:wslCalls -match "--distribution Ubuntu") {
-            throw "install.ps1 installed a second Ubuntu distro."
+          if ($global:wslCalls -match "--distribution $([regex]::Escape($distribution))( |$)") {
+            throw "install.ps1 installed a second $distribution distro."
           }
 
-          if (-not ($global:wslCalls -match "--set-version Ubuntu-24.04 2")) {
-            throw "install.ps1 did not convert Ubuntu-24.04 to WSL2."
+          if (-not ($global:wslCalls -match "--set-version $([regex]::Escape($versionedDistribution)) 2")) {
+            throw "install.ps1 did not convert $versionedDistribution to WSL2."
           }
 
-          if (-not ($global:wslCalls -match "--set-default Ubuntu-24.04")) {
-            throw "install.ps1 did not keep Ubuntu-24.04 as the default WSL distro."
+          if (-not ($global:wslCalls -match "--set-default $([regex]::Escape($versionedDistribution))( |$)")) {
+            throw "install.ps1 did not keep $versionedDistribution as the default WSL distro."
           }
 
           $versionedSettings = Get-ProvisionedTerminalSettings
-          if ($versionedSettings -notmatch "963ff2f7-6aed-5ce3-9d91-90d99571f53a") {
-            throw "Windows Terminal settings were not regenerated for Ubuntu-24.04."
+          $versionedGuid = (Get-WslTerminalProfileGuid -DistroName $versionedDistribution).Trim("{}")
+          if ($versionedSettings -notmatch [regex]::Escape($versionedGuid)) {
+            throw "Windows Terminal settings were not regenerated for $versionedDistribution."
           }
-          if ($versionedSettings -notmatch "wsl.exe -d Ubuntu-24.04") {
-            throw "Windows Terminal profile was not pointed at Ubuntu-24.04."
+          if ($versionedSettings -notmatch [regex]::Escape("wsl.exe -d $versionedDistribution")) {
+            throw "Windows Terminal profile was not pointed at $versionedDistribution."
           }
 
           $rebootOutput = pwsh -NoProfile -Command @'
@@ -334,11 +356,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "WSL reboot path failed with exit code ${LASTEXITCODE}: $rebootOutput"
           }
-          if ($rebootOutput -notmatch "Restart Windows, then run this installer again to install Ubuntu") {
+          if ($rebootOutput -notmatch [regex]::Escape("Restart Windows, then run this installer again to install $distribution")) {
             throw "WSL reboot path did not report that a restart is required: $rebootOutput"
           }
-          if ($rebootOutput -match "Installing Ubuntu for WSL") {
-            throw "WSL reboot path continued into the Ubuntu install."
+          if ($rebootOutput -match [regex]::Escape("Installing $distribution for WSL")) {
+            throw "WSL reboot path continued into the $distribution install."
           }
 
           $global:wslCalls = [System.Collections.Generic.List[string]]::new()
@@ -385,9 +407,13 @@ jobs:
             throw "Could not update WinGet sources."
           }
 
-          $packages = Get-Content ./config/packages.txt |
-            ForEach-Object { $_.Trim() } |
-            Where-Object { $_ -and -not $_.StartsWith("#") }
+          $packages = @(
+            Get-Content ./config/packages.txt |
+              ForEach-Object { $_.Trim() } |
+              Where-Object { $_ -and -not $_.StartsWith("#") }
+          )
+          $node = Import-PowerShellDataFile ./config/node.psd1
+          $packages += [string]$node.PackageId
 
           foreach ($id in $packages) {
             Write-Host "Checking $id"

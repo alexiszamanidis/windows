@@ -100,12 +100,22 @@ function Get-WslDistroList {
     Write-Output -InputObject (Get-WslDistroFromOutput -Lines $listed.Lines) -NoEnumerate
 }
 
+function Get-WslDistributionName {
+    $wsl = Import-InstallerDataFile -RelativePath "config/wsl.psd1"
+    $name = [string]$wsl.Distribution
+    if ([string]::IsNullOrWhiteSpace($name)) {
+        throw "config/wsl.psd1 must set Distribution."
+    }
+
+    return $name
+}
+
 function Install-WslUbuntu {
     [CmdletBinding(SupportsShouldProcess)]
     param()
 
-    $distroName = "Ubuntu"
-    if (-not $PSCmdlet.ShouldProcess($distroName, "Install WSL2 and Ubuntu")) {
+    $distroName = Get-WslDistributionName
+    if (-not $PSCmdlet.ShouldProcess($distroName, "Install WSL2 and $distroName")) {
         return
     }
 
@@ -121,17 +131,18 @@ function Install-WslUbuntu {
 
         $existing = $distros | Where-Object { $_.Name -eq $distroName } | Select-Object -First 1
         if (-not $existing) {
-            $existing = $distros | Where-Object { $_.Name -like "Ubuntu-*" } | Select-Object -First 1
+            $versionedName = "$([WildcardPattern]::Escape($distroName))-*"
+            $existing = $distros | Where-Object { $_.Name -like $versionedName } | Select-Object -First 1
         }
 
         if (-not $existing) {
-            Write-Information "Installing Ubuntu for WSL."
+            Write-Information "Installing $distroName for WSL."
             $installed = Get-WslOutput -Arguments @("--install", "--distribution", $distroName, "--no-launch", "--web-download")
             if (Test-WslRebootRequired $installed) {
                 throw "WSL_REBOOT_REQUIRED"
             }
             if ($installed.ExitCode -ne 0) {
-                throw "Ubuntu installation failed (exit code $($installed.ExitCode)). $($installed.Output)"
+                throw "$distroName installation failed (exit code $($installed.ExitCode)). $($installed.Output)"
             }
             $existing = [pscustomobject]@{
                 Name    = $distroName
@@ -158,12 +169,12 @@ function Install-WslUbuntu {
         }
 
         Write-Information "$($existing.Name) is ready on WSL2."
-        Write-Information "Open Ubuntu and create your Linux user if this is the first launch."
+        Write-Information "Open $distroName and create your Linux user if this is the first launch."
         Write-Information "Then install Linux packages with the Ansible repo. This script stops before that."
         Write-Information "git clone https://github.com/alexiszamanidis/ansible.git ~/ansible && cd ~/ansible && git remote set-url origin git@github.com:alexiszamanidis/ansible.git && ./install"
     } catch {
         if ($_.Exception.Message -eq "WSL_REBOOT_REQUIRED") {
-            Write-Information "Restart Windows, then run this installer again to install Ubuntu."
+            Write-Information "Restart Windows, then run this installer again to install $distroName."
             return
         }
         throw
@@ -171,21 +182,23 @@ function Install-WslUbuntu {
 }
 
 function Get-PreferredWslDistroName {
+    $distroName = Get-WslDistributionName
     $listed = Get-WslOutput -Arguments @("--list", "--verbose")
     if ($listed.ExitCode -ne 0 -and $listed.Output -notmatch "(?i)no installed distributions") {
-        return "Ubuntu"
+        return $distroName
     }
 
     $distros = @(Get-WslDistroFromOutput -Lines $listed.Lines)
-    $exact = $distros | Where-Object { $_.Name -eq "Ubuntu" } | Select-Object -First 1
+    $exact = $distros | Where-Object { $_.Name -eq $distroName } | Select-Object -First 1
     if ($exact) {
         return $exact.Name
     }
 
-    $versioned = $distros | Where-Object { $_.Name -like "Ubuntu*" } | Select-Object -First 1
+    $familyName = "$([WildcardPattern]::Escape($distroName))*"
+    $versioned = $distros | Where-Object { $_.Name -like $familyName } | Select-Object -First 1
     if ($versioned) {
         return $versioned.Name
     }
 
-    return "Ubuntu"
+    return $distroName
 }

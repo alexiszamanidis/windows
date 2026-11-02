@@ -4,11 +4,6 @@ $InformationPreference = "Continue"
 $repoRawBase = "https://raw.githubusercontent.com/alexiszamanidis/windows"
 $repoRef = "HEAD"
 $installerRoot = $PSScriptRoot
-$packagesFile = if ($installerRoot) {
-    Join-Path $installerRoot "config\packages.txt"
-} else {
-    Join-Path $env:TEMP "windows-packages.txt"
-}
 
 $knownTasks = @("DarkMode", "Wallpaper", "Explorer", "LongPaths", "Git", "Packages", "FlowLauncher", "GlazeWM", "InputLeap", "Wsl", "Font", "Terminal", "Node")
 $selectedTasks = $null
@@ -34,6 +29,66 @@ function Test-SelectedTask {
     )
 
     return $selectedTasks -contains $Name
+}
+
+function Get-InstallerConfigPath {
+    param(
+        [Parameter(Mandatory)]
+        [string]$RelativePath
+    )
+
+    $relative = ($RelativePath -replace "\\", "/").TrimStart("/")
+    if ($installerRoot) {
+        return Join-Path $installerRoot ($relative -replace "/", "\")
+    }
+
+    $leaf = Split-Path -Path ($relative -replace "/", "\") -Leaf
+    return Join-Path $env:TEMP "windows-$leaf"
+}
+
+function Get-InstallerConfigFile {
+    param(
+        [Parameter(Mandatory)]
+        [string]$RelativePath
+    )
+
+    $path = Get-InstallerConfigPath -RelativePath $RelativePath
+    if (Test-Path -LiteralPath $path) {
+        return $path
+    }
+
+    $relative = ($RelativePath -replace "\\", "/").TrimStart("/")
+    Write-Information "$relative not found locally. Downloading from GitHub..."
+    try {
+        Invoke-WebRequest -Uri "$repoRawBase/$repoRef/$relative" -OutFile $path -UseBasicParsing
+    } catch {
+        throw "$relative not found at $path and download from GitHub failed."
+    }
+
+    return $path
+}
+
+function Import-InstallerDataFile {
+    param(
+        [Parameter(Mandatory)]
+        [string]$RelativePath
+    )
+
+    return Import-PowerShellDataFile -LiteralPath (Get-InstallerConfigFile -RelativePath $RelativePath)
+}
+
+function Get-InstallerPackageId {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    $packageId = @(
+        Get-Content -LiteralPath $Path |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { $_ -and -not $_.StartsWith("#") }
+    )
+    return ,$packageId
 }
 
 $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
@@ -78,35 +133,9 @@ foreach ($relativePath in $installerTasks) {
     }
 }
 
-if (-not (Test-Path $packagesFile)) {
-    Write-Information "packages.txt not found locally. Downloading from GitHub..."
-    try {
-        Invoke-WebRequest -Uri "$repoRawBase/$repoRef/config/packages.txt" -OutFile $packagesFile -UseBasicParsing
-    } catch {
-        throw "packages.txt not found at $packagesFile and download from GitHub failed."
-    }
-}
-
-$packages = Get-Content $packagesFile |
-    ForEach-Object { $_.Trim() } |
-    Where-Object { $_ -and -not $_.StartsWith("#") }
-
-$packageOptionsFile = if ($installerRoot) {
-    Join-Path $installerRoot "config\packages.psd1"
-} else {
-    Join-Path $env:TEMP "windows-packages.psd1"
-}
-
-if (-not (Test-Path $packageOptionsFile)) {
-    Write-Information "packages.psd1 not found locally. Downloading from GitHub..."
-    try {
-        Invoke-WebRequest -Uri "$repoRawBase/$repoRef/config/packages.psd1" -OutFile $packageOptionsFile -UseBasicParsing
-    } catch {
-        throw "packages.psd1 not found at $packageOptionsFile and download from GitHub failed."
-    }
-}
-
-$packageOptions = Import-PowerShellDataFile $packageOptionsFile
+$packagesFile = Get-InstallerConfigFile -RelativePath "config/packages.txt"
+$packages = Get-InstallerPackageId -Path $packagesFile
+$packageOptions = Import-InstallerDataFile -RelativePath "config/packages.psd1"
 
 if (Test-SelectedTask "DarkMode") {
     Set-DarkMode
