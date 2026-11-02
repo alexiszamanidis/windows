@@ -5,10 +5,11 @@ alwaysApply: true
 
 # Narrow edits
 
-Match the request to one row. Read those paths only. Do not list the repo, open other tasks, or read `README.md` unless the user asked about docs.
+Match the request to one row. Read those paths only. Do not list the repo or open other tasks.
 
 | Request | Read |
 | --- | --- |
+| Review, recommendation, or a named commit | the files that commit changed |
 | GlazeWM, tiling, workspaces, keybinds | `config/glazewm.yaml`, matching function in `tasks/GlazeWm.ps1` |
 | Zebar bar | `config/zebar/index.html`, `config/zebar/zpack.json`, `config/zebar/volume.ps1` |
 | Terminal | `config/terminal-settings.json`, `tasks/Terminal.ps1` |
@@ -18,6 +19,8 @@ Match the request to one row. Read those paths only. Do not list the repo, open 
 | CI failure | the failing step in `.github/workflows/validate.yml` only |
 
 - `git status --short` once. Keep unrelated user changes.
-- After editing, grep the changed name in `tests/install.Tests.ps1`. Open a workflow file only when that grep hits it.
-- Check syntax with the PowerShell parser on the edited script, or Prettier on the edited HTML file if `node_modules` already exists. Do not install Pester, PSScriptAnalyzer, or npm packages. Do not run the full test file.
+- Search one directory. The pattern must contain a filename, function, or version. Do not search the repo for `version`, `node`, or `Ubuntu`.
+- Read at most 80 lines, and do not read a path twice. Do not read `tests/install.Tests.ps1`, `.github/workflows/validate.yml`, `README.md`, or `package-lock.json` from the start.
+- After an edit, grep the changed name in `tests/install.Tests.ps1` and read the matching lines. Open a workflow file only when that grep hits it, and read only that step.
+- Check syntax with the PowerShell parser on the edited script. Run one named Pester test. Do not run the full test file, `winget show`, or the installer.
 - Edit `config/` in the repo. Do not touch `%USERPROFILE%\.glzr`, the registry, or running apps unless the user asked for a live change.
