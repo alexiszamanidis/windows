@@ -52,6 +52,14 @@
                 margin-right: 4px;
             }
 
+            #resources .warn {
+                color: #ffb86c;
+            }
+
+            #resources .hot {
+                color: #ff5555;
+            }
+
             button {
                 border: 0;
                 background: #282a36;
@@ -270,6 +278,24 @@
                 return Number.isFinite(value) ? `${Math.round(value)}%` : "--";
             }
 
+            function heatClass(value, warnAt, hotAt) {
+                if (!Number.isFinite(value)) {
+                    return "";
+                }
+                if (value >= hotAt) {
+                    return "hot";
+                }
+                if (value >= warnAt) {
+                    return "warn";
+                }
+                return "";
+            }
+
+            function setResource(el, label, text, value, warnAt, hotAt) {
+                el.className = heatClass(value, warnAt, hotAt);
+                el.innerHTML = `<span class="label">${label}</span>${text}`;
+            }
+
             function collectWindowIds(node, ids = []) {
                 if (!node) {
                     return ids;
@@ -379,12 +405,22 @@
                             : "";
                 }
 
-                cpuEl.innerHTML = `<span class="label">CPU</span>${pct(
-                    output.cpu?.usage
-                )}`;
-                memoryEl.innerHTML = `<span class="label">MEM</span>${pct(
-                    output.memory?.usage
-                )}`;
+                setResource(
+                    cpuEl,
+                    "CPU",
+                    pct(output.cpu?.usage),
+                    output.cpu?.usage,
+                    60,
+                    85
+                );
+                setResource(
+                    memoryEl,
+                    "MEM",
+                    pct(output.memory?.usage),
+                    output.memory?.usage,
+                    60,
+                    85
+                );
                 renderSystray(output.systray);
                 renderWeather(output.weather);
                 renderLanguage(output.keyboard);
@@ -396,9 +432,10 @@
 
             function renderWeather(weather) {
                 const temp = weather?.celsiusTemp;
-                weatherEl.innerHTML = `<span class="label">TMP</span>${
-                    Number.isFinite(temp) ? `${Math.round(temp)}°` : "--"
-                }`;
+                const text = Number.isFinite(temp)
+                    ? `${Math.round(temp)}°C`
+                    : "--";
+                setResource(weatherEl, "TMP", text, temp, 25, 32);
             }
 
             function renderLanguage(keyboard) {
