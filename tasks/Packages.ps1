@@ -1,5 +1,7 @@
 # 0x8A15002B: package is already installed and no newer version is available.
 $wingetUpdateNotApplicable = -1978335189
+# 0x8A150006: ShellExecute failed. The installer process then exits 3221225477 (0xC0000005).
+$wingetShellExecFailed = -1978335226
 # 0x8A15010C: Inno Setup aborted a suppressed prompt and WinGet reports it as cancelled.
 $wingetInstallCancelled = -1978334964
 
@@ -83,16 +85,36 @@ function Install-RequestedPackage {
         return
     }
 
+    if (-not $Option) {
+        $Option = @{}
+    }
+
     Write-Information "Installing $Id"
+    if ($Option.RetryOnShellExec -and $Option.Processes) {
+        Write-Information "Closing $Id before WinGet runs so its installer does not crash."
+        Stop-PackageApplication -ProcessName $Option.Processes -ServiceName $Option.Service
+    }
     $exitCode = Install-WinGetPackage -Id $Id -Option $Option
+    $closeAndRetry = $false
     if ($Option.RetryOnCancel -and $exitCode -eq $wingetInstallCancelled) {
         # The silent installer exits 5 when it cannot close a program using its files.
         Write-Information "$Id installer aborted. Closing its processes and retrying."
+        $closeAndRetry = $true
+    }
+    elseif ($Option.RetryOnShellExec -and $exitCode -eq $wingetShellExecFailed) {
+        Write-Information "$Id installer crashed while the application was open. Closing its processes and retrying."
+        $closeAndRetry = $true
+    }
+    if ($closeAndRetry) {
         Stop-PackageApplication -ProcessName $Option.Processes -ServiceName $Option.Service
         $exitCode = Install-WinGetPackage -Id $Id -Option $Option
     }
     if ($exitCode -eq $wingetUpdateNotApplicable) {
         Write-Information "$Id is already installed and up to date."
+        return
+    }
+    if ($Option.RetryOnShellExec -and $exitCode -eq $wingetShellExecFailed) {
+        Write-Information "$Id is already present. WinGet's installer crashed, so the existing install is kept."
         return
     }
     if ($exitCode -ne 0) {

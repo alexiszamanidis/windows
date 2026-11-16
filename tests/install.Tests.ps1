@@ -41,6 +41,7 @@ BeforeAll {
     $script:repoRawBase = "https://raw.githubusercontent.com/alexiszamanidis/windows"
     $script:repoRef = "HEAD"
     $script:wingetUpdateNotApplicable = -1978335189
+    $script:wingetShellExecFailed = -1978335226
     $script:wingetInstallCancelled = -1978334964
 
     function global:winget {
@@ -109,7 +110,7 @@ Describe "Installer configuration" {
     }
 
     It "keeps package options on packages the installer installs" {
-        $allowed = @("Source", "Silent", "Custom", "Processes", "Service", "RetryOnCancel")
+        $allowed = @("Source", "Silent", "Custom", "Processes", "Service", "RetryOnCancel", "RetryOnShellExec")
         foreach ($id in $script:packageOptions.Keys) {
             $script:packageIds | Should -Contain $id
             foreach ($key in @($script:packageOptions[$id].Keys)) {
@@ -218,6 +219,54 @@ Describe "WinGet packages" {
 
     It "does not retry a cancelled install without RetryOnCancel" {
         $script:wingetResults.Enqueue($script:wingetInstallCancelled)
+        { Install-RequestedPackage -Id "Git.Git" -Option @{} } | Should -Throw "WinGet failed to install Git.Git*"
+        $script:wingetCalls.Count | Should -Be 1
+    }
+
+    It "recovers when the Discord installer crashes while Discord is open" {
+        $option = $script:packageOptions["Discord.Discord"]
+        $option.RetryOnShellExec | Should -BeTrue
+        @($option.Processes) | Should -Be @("Discord")
+    }
+
+    It "retries a package once when its installer crashes while the application is open" {
+        $packageId = @($script:packageOptions.Keys | Where-Object { $script:packageOptions[$_].RetryOnShellExec }) | Select-Object -First 1
+        $packageId | Should -Not -BeNullOrEmpty
+        $option = $script:packageOptions[$packageId]
+        $script:stoppedProcesses = $null
+        $script:stopCallCounts = [System.Collections.Generic.List[int]]::new()
+        Add-TestFunction Stop-PackageApplication {
+            param(
+                [string[]]$ProcessName,
+                [string]$ServiceName
+            )
+            $script:stoppedProcesses = @($ProcessName)
+            $script:stoppedService = $ServiceName
+            $script:stopCallCounts.Add($script:wingetCalls.Count)
+        }
+        $script:wingetResults.Enqueue($script:wingetShellExecFailed)
+        $script:wingetResults.Enqueue(0)
+        Install-RequestedPackage -Id $packageId -Option $option
+        $script:wingetCalls.Count | Should -Be 2
+        $script:stopCallCounts | Should -Be @(0, 1)
+        $script:stoppedProcesses | Should -Be @($option.Processes)
+        $script:stoppedService | Should -Be ([string]$option.Service)
+        $script:wingetCalls[1] | Should -Match "--id $([regex]::Escape([string]$packageId)) --exact"
+    }
+
+    It "keeps an existing install when the installer keeps crashing" {
+        $packageId = @($script:packageOptions.Keys | Where-Object { $script:packageOptions[$_].RetryOnShellExec }) | Select-Object -First 1
+        $packageId | Should -Not -BeNullOrEmpty
+        $option = $script:packageOptions[$packageId]
+        Add-TestFunction Stop-PackageApplication { }
+        $script:wingetResults.Enqueue($script:wingetShellExecFailed)
+        $script:wingetResults.Enqueue($script:wingetShellExecFailed)
+        { Install-RequestedPackage -Id $packageId -Option $option } | Should -Not -Throw
+        $script:wingetCalls.Count | Should -Be 2
+    }
+
+    It "does not retry a crashed install without RetryOnShellExec" {
+        $script:wingetResults.Enqueue($script:wingetShellExecFailed)
         { Install-RequestedPackage -Id "Git.Git" -Option @{} } | Should -Throw "WinGet failed to install Git.Git*"
         $script:wingetCalls.Count | Should -Be 1
     }
