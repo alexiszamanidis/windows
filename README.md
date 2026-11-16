@@ -36,7 +36,7 @@ The URL follows the repository default branch. The one-liner runs every task. Se
 -   nvm-windows and the Node.js version in `config/node.psd1`, selected through nvm-windows
 -   Flow Launcher opens with Win+P and starts at login. Win+Shift+P searches open windows. Windows is told to stop using Win+P for the project screen. If Windows still takes Win+P, a login helper opens Flow Launcher instead
 -   GlazeWM follows the i3 config: the Windows key, the ten workspaces and the window assignments. A top bar lists the workspaces. Win+P stays with Flow Launcher. GlazeWM starts at login
--   The Input Leap server layout. Desktop is on the left and the Linux client is on the right. The server starts at login
+-   The Input Leap server layout. Desktop is on the left and the Linux client is on the right. The client name comes from `config/input-leap.local.psd1` or `INPUT_LEAP_CLIENT`. Copy `config/input-leap.local.psd1.example`. The server starts at login
 -   WSL2 and the distro in `config/wsl.psd1`
 -   Hack Nerd Font Mono and Windows Terminal settings. The default profile is the Ubuntu distro that is installed. Ansible installs the same font family inside Linux
 
@@ -57,4 +57,4 @@ Select-String -Path .\install.ps1 -Pattern '^\$knownTasks'
 .\install.ps1 DarkMode,Wallpaper,Explorer,LongPaths
 ```
 
-A file run takes that list as its first argument. A file run needs a process execution policy that allows unsigned scripts: `powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 Node`. The one-liner cannot take arguments, so set `WINDOWS_TASKS` before running it. Long paths and the Git identity are applied when Git is already installed.
+A file run takes that list as its first argument. A file run needs a process execution policy that allows unsigned scripts: `powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 Node`. The one-liner cannot take arguments, so set `WINDOWS_TASKS` before running it. The elevated restart keeps that list and waits for Enter when it fails. Long paths and the Git identity are applied when Git is already installed.

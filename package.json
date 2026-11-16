@@ -2,7 +2,8 @@
     "type": "module",
     "name": "windows",
     "version": "1.0.0",
-    "description": "This repository installs Windows applications",
+    "private": true,
+    "description": "Windows machine setup: WinGet packages, GlazeWM, Zebar, Terminal and WSL",
     "scripts": {
         "format": "prettier . --write",
         "prepare": "husky"

@@ -16,6 +16,38 @@ function Get-InputLeapServer {
     return $null
 }
 
+function Get-InputLeapClientName {
+    $client = [string]$env:INPUT_LEAP_CLIENT
+    $localConfig = if ($installerRoot) {
+        Join-Path $installerRoot "config\input-leap.local.psd1"
+    } else {
+        $null
+    }
+    if ([string]::IsNullOrWhiteSpace($client) -and $localConfig -and (Test-Path -LiteralPath $localConfig)) {
+        $client = [string](Import-PowerShellDataFile -LiteralPath $localConfig).Client
+    }
+    $client = $client.Trim()
+    if ([string]::IsNullOrWhiteSpace($client)) {
+        throw "Input Leap client name is not set. Add Client to config/input-leap.local.psd1 or set INPUT_LEAP_CLIENT."
+    }
+
+    return $client
+}
+
+function Get-InputLeapLayoutText {
+    param(
+        [Parameter(Mandatory)]
+        [string]$SourcePath
+    )
+
+    $layout = [System.IO.File]::ReadAllText($SourcePath)
+    if ($layout -notlike "*__INPUT_LEAP_CLIENT__*") {
+        throw "Input Leap layout is missing the client placeholder."
+    }
+
+    return $layout.Replace("__INPUT_LEAP_CLIENT__", (Get-InputLeapClientName))
+}
+
 function Set-InputLeapLayout {
     [CmdletBinding(SupportsShouldProcess)]
     param()
@@ -36,8 +68,10 @@ function Set-InputLeapLayout {
         Invoke-WebRequest -Uri "$repoRawBase/$repoRef/config/input-leap.sgc" -OutFile $sourcePath -UseBasicParsing
     }
 
+    $layout = Get-InputLeapLayoutText -SourcePath $sourcePath
     New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
-    Copy-Item -LiteralPath $sourcePath -Destination $configPath -Force
+    $utf8 = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($configPath, $layout, $utf8)
     Write-Information "Input Leap layout written."
 
     $serverExe = Get-InputLeapServer

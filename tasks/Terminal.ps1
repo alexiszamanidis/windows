@@ -75,12 +75,21 @@ namespace WindowsSetup {
 
     foreach ($style in $styles) {
         $destination = Join-Path $fontDirectory $style.File
-        if (-not (Test-Path -LiteralPath $destination)) {
-            $fontUri = "https://raw.githubusercontent.com/ryanoasis/nerd-fonts/master/patched-fonts/Hack/$($style.File)"
-            Invoke-WebRequest -Uri $fontUri -OutFile $destination -UseBasicParsing
-        }
-        if ((Get-Item -LiteralPath $destination).Length -eq 0) {
-            throw "Font file $destination is empty."
+        $needsDownload = -not (Test-Path -LiteralPath $destination) -or (Get-Item -LiteralPath $destination).Length -eq 0
+        if ($needsDownload) {
+            $fontUri = "https://raw.githubusercontent.com/ryanoasis/nerd-fonts/v3.5.1/patched-fonts/Hack/$($style.File)"
+            $tempFont = Join-Path $env:TEMP ("windows-" + $style.File)
+            try {
+                Invoke-WebRequest -Uri $fontUri -OutFile $tempFont -UseBasicParsing
+                if ((Get-Item -LiteralPath $tempFont).Length -eq 0) {
+                    throw "Font download for $($style.File) is empty."
+                }
+                Move-Item -LiteralPath $tempFont -Destination $destination -Force
+            } finally {
+                if (Test-Path -LiteralPath $tempFont) {
+                    Remove-Item -LiteralPath $tempFont -Force
+                }
+            }
         }
 
         New-ItemProperty -Path $registryPath -Name $style.Name -PropertyType String -Value $destination -Force | Out-Null

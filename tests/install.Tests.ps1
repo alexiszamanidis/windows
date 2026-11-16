@@ -509,7 +509,7 @@ Describe "GlazeWM" {
         $config | Should -Match "\['lwin\+enter'\]"
         $config | Should -Not -Match "'lwin\+p'"
         $config | Should -Not -Match "'lwin\+l'"
-        Test-Path -LiteralPath ./config/chrome-startup.ps1 | Should -BeTrue
+        Test-Path -LiteralPath ./config/chrome-startup.ps1 | Should -BeFalse
     }
 
     It "writes the config and the login entry" {
@@ -530,10 +530,7 @@ Describe "GlazeWM" {
         $linkedConfig = Get-Item -LiteralPath $configPath
         $linkedConfig.LinkType | Should -Be "SymbolicLink"
         @($linkedConfig.Target)[0] | Should -Be (Resolve-Path ./config/glazewm.yaml).Path
-        $startupPath = Join-Path $directory "chrome-startup.ps1"
-        $linkedStartup = Get-Item -LiteralPath $startupPath
-        $linkedStartup.LinkType | Should -Be "SymbolicLink"
-        @($linkedStartup.Target)[0] | Should -Be (Resolve-Path ./config/chrome-startup.ps1).Path
+        Test-Path -LiteralPath (Join-Path $directory "chrome-startup.ps1") | Should -BeFalse
         Get-ItemPropertyValue -LiteralPath $runPath -Name "GlazeWM" | Should -Be '"C:\Program Files\glzr.io\GlazeWM\glazewm.exe"'
     }
 
@@ -556,7 +553,7 @@ Describe "GlazeWM" {
         $script:reloads | Should -Be 1
         $script:starts | Should -Be 0
         [System.IO.File]::ReadAllText($configPath) | Should -Match "display_name: '10: brave'"
-        Test-Path -LiteralPath (Join-Path $directory "chrome-startup.ps1") | Should -BeTrue
+        Test-Path -LiteralPath (Join-Path $directory "chrome-startup.ps1") | Should -BeFalse
     }
 
     It "starts GlazeWM when it is installed and not running" {
@@ -650,6 +647,10 @@ Describe "WSL" {
         }
     }
 
+    It "uses the configured name when WSL lists no distros" {
+        Get-PreferredWslDistroName | Should -Be $script:wslDistribution
+    }
+
     It "installs the configured distro when WSL has none" {
         Install-WslUbuntu
 
@@ -699,6 +700,25 @@ Describe "WSL" {
         Install-WslUbuntu
 
         @($script:wslCalls | Where-Object { $_ -match "--distribution " }) | Should -BeNullOrEmpty
+    }
+}
+
+Describe "Input Leap" {
+    It "fills the client name from INPUT_LEAP_CLIENT" {
+        $previous = $env:INPUT_LEAP_CLIENT
+        try {
+            $env:INPUT_LEAP_CLIENT = "linux-client"
+            $text = Get-InputLeapLayoutText -SourcePath (Resolve-Path ./config/input-leap.sgc).Path
+            $text | Should -Match "(?m)^    linux-client:"
+            $text | Should -Match "right = linux-client"
+            $text | Should -Not -Match "__INPUT_LEAP_CLIENT__"
+        } finally {
+            if ($null -eq $previous) {
+                Remove-Item Env:INPUT_LEAP_CLIENT -ErrorAction SilentlyContinue
+            } else {
+                $env:INPUT_LEAP_CLIENT = $previous
+            }
+        }
     }
 }
 

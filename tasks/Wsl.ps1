@@ -26,7 +26,32 @@ function Test-WslRebootRequired {
         $Result
     )
 
-    return $Result.Output -match "(?i)\b(reboot|restart)"
+    return $Result.Output -match "(?i)(reboot is required|please reboot|system is rebooted|restart (your |the )?(computer|windows|system)|WSL_E_\w*REBOOT)"
+}
+
+function Get-InstalledWslDistro {
+    param(
+        [Parameter(Mandatory)]
+        $Distros,
+        [Parameter(Mandatory)]
+        [string]$DistroName
+    )
+
+    # A generic list cannot be wrapped with @() here. PowerShell throws "Argument types do not match".
+    foreach ($distro in $Distros) {
+        if ($distro.Name -eq $DistroName) {
+            return $distro
+        }
+    }
+
+    $versionPrefix = "$DistroName-"
+    foreach ($distro in $Distros) {
+        if ($distro.Name -and $distro.Name.StartsWith($versionPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $distro
+        }
+    }
+
+    return $null
 }
 
 function Test-WslPlatformMissing {
@@ -129,11 +154,7 @@ function Install-WslUbuntu {
             throw "Could not set WSL2 as the default version (exit code $($defaultVersion.ExitCode)). $($defaultVersion.Output)"
         }
 
-        $existing = $distros | Where-Object { $_.Name -eq $distroName } | Select-Object -First 1
-        if (-not $existing) {
-            $versionedName = "$([WildcardPattern]::Escape($distroName))-*"
-            $existing = $distros | Where-Object { $_.Name -like $versionedName } | Select-Object -First 1
-        }
+        $existing = Get-InstalledWslDistro -Distros $distros -DistroName $distroName
 
         if (-not $existing) {
             Write-Information "Installing $distroName for WSL."
@@ -188,16 +209,11 @@ function Get-PreferredWslDistroName {
         return $distroName
     }
 
-    $distros = @(Get-WslDistroFromOutput -Lines $listed.Lines)
-    $exact = $distros | Where-Object { $_.Name -eq $distroName } | Select-Object -First 1
-    if ($exact) {
-        return $exact.Name
-    }
-
-    $familyName = "$([WildcardPattern]::Escape($distroName))*"
-    $versioned = $distros | Where-Object { $_.Name -like $familyName } | Select-Object -First 1
-    if ($versioned) {
-        return $versioned.Name
+    # Do not wrap this list in @(). An empty list becomes one item and Name is then null.
+    $distros = Get-WslDistroFromOutput -Lines $listed.Lines
+    $match = Get-InstalledWslDistro -Distros $distros -DistroName $distroName
+    if ($match) {
+        return $match.Name
     }
 
     return $distroName

@@ -20,7 +20,7 @@ function Stop-PackageApplication {
     foreach ($name in $ProcessName) {
         Get-Process -Name $name | Stop-Process -Force
     }
-    if ($ServiceName) {
+    if ($ServiceName -and (Get-Command -Name Stop-Service -ErrorAction SilentlyContinue)) {
         Stop-Service -Name $ServiceName -Force
     }
     $ErrorActionPreference = $previousErrorAction
@@ -56,10 +56,6 @@ function Install-WinGetPackage {
     if ($Option.Silent) {
         $arguments += "--silent"
     }
-    if ($Option.Processes -or $Option.Service) {
-        # The silent installer exits 5 when it cannot close a program using its files.
-        Stop-PackageApplication -ProcessName $Option.Processes -ServiceName $Option.Service
-    }
     if ($Option.Custom) {
         $arguments += @("--custom", $Option.Custom)
     }
@@ -90,7 +86,9 @@ function Install-RequestedPackage {
     Write-Information "Installing $Id"
     $exitCode = Install-WinGetPackage -Id $Id -Option $Option
     if ($Option.RetryOnCancel -and $exitCode -eq $wingetInstallCancelled) {
+        # The silent installer exits 5 when it cannot close a program using its files.
         Write-Information "$Id installer aborted. Closing its processes and retrying."
+        Stop-PackageApplication -ProcessName $Option.Processes -ServiceName $Option.Service
         $exitCode = Install-WinGetPackage -Id $Id -Option $Option
     }
     if ($exitCode -eq $wingetUpdateNotApplicable) {

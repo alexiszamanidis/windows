@@ -94,14 +94,17 @@ function Get-InstallerPackageId {
 $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Information "Administrator permission is required. Restarting elevated..."
+    # RunAs does not inherit session variables, so the one-liner must set WINDOWS_TASKS itself.
+    # Encode the command so spaces and quotes survive Start-Process argument joining.
+    $taskList = ($selectedTasks -join ",").Replace("'", "''")
     if ($PSCommandPath) {
-        $argumentList = @(
-            "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $PSCommandPath,
-            ($selectedTasks -join ",")
-        )
+        $quotedPath = $PSCommandPath.Replace("'", "''")
+        $command = "`$ErrorActionPreference='Stop'; try { & '$quotedPath' '$taskList' } catch { Write-Host `$_.Exception.Message; Read-Host 'Press Enter to close'; exit 1 }"
     } else {
-        $argumentList = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "irm $repoRawBase/$repoRef/install.ps1 | iex")
+        $command = "`$env:WINDOWS_TASKS='$taskList'; `$ErrorActionPreference='Stop'; try { irm $repoRawBase/$repoRef/install.ps1 | iex } catch { Write-Host `$_.Exception.Message; Read-Host 'Press Enter to close'; exit 1 }"
     }
+    $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($command))
+    $argumentList = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", $encoded)
     Start-Process -FilePath "powershell" -Verb RunAs -ArgumentList $argumentList | Out-Null
     exit 0
 }

@@ -1,11 +1,11 @@
 ---
-description: Open only the files a change needs
+description: Open the files a change needs
 alwaysApply: true
 ---
 
 # Narrow edits
 
-Match the request to one row. Read those paths only. Do not list the repo or open other tasks.
+Match a small request to one row and read those paths. A request that names several areas or the whole repository can open each named area.
 
 | Request | Read |
 | --- | --- |
@@ -15,12 +15,11 @@ Match the request to one row. Read those paths only. Do not list the repo or ope
 | Terminal | `config/terminal-settings.json`, `tasks/Terminal.ps1` |
 | Packages | `config/packages.psd1`, `tasks/Packages.ps1` |
 | Git, WSL, Node, Flow Launcher, Input Leap, appearance | that one file under `tasks/`, plus its `config/` file if the task copies one |
-| Installer selection or elevation | `install.ps1` and the single task it calls |
-| CI failure | the failing step in `.github/workflows/validate.yml` only |
+| Installer selection or elevation | `install.ps1` and the task it calls |
+| CI failure | the failing step in `.github/workflows/validate.yml` |
+| Agent instructions | `AGENTS.md`, `.cursor/rules/narrow-edits.mdc` |
 
 - `git status --short` once. Keep unrelated user changes.
-- Search one directory. The pattern must contain a filename, function, or version. Do not search the repo for `version`, `node`, or `Ubuntu`.
-- Read at most 80 lines, and do not read a path twice. Do not read `tests/install.Tests.ps1`, `.github/workflows/validate.yml`, `README.md`, or `package-lock.json` from the start.
-- After an edit, grep the changed name in `tests/install.Tests.ps1` and read the matching lines. Open a workflow file only when that grep hits it, and read only that step.
-- Check syntax with the PowerShell parser on the edited script. Run one named Pester test. Do not run the full test file, `winget show`, or the installer.
+- After a rename, grep the name in `tests/install.Tests.ps1` and `.github/workflows`.
+- Check syntax with the PowerShell parser on the edited script. Run one named Pester test. Do not run the installer or `winget show`.
 - Edit `config/` in the repo. Do not touch `%USERPROFILE%\.glzr`, the registry, or running apps unless the user asked for a live change.

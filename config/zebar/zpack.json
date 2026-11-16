@@ -29,7 +29,7 @@
                     },
                     {
                         "program": "powershell",
-                        "argsRegex": "^-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File .+\\\\volume\\.ps1$"
+                        "argsRegex": "^-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File [^ ]+\\\\workspaces\\\\volume\\.ps1$"
                     }
                 ]
             },

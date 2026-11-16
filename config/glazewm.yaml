@@ -7,8 +7,6 @@ general:
     - 'shell-exec zebar'
     - 'shell-exec chrome'
     - 'shell-exec wt'
-    # - 'shell-exec slack'
-    # - 'shell-exec brave'
   shutdown_commands:
     - 'shell-exec taskkill /IM zebar.exe /F'
   config_reload_commands: []
@@ -90,11 +88,6 @@ window_rules:
       - window_title: { regex: '(?i)picture.in.picture' }
         window_class: { regex: 'Chrome_WidgetWin_1' }
 
-  # - commands: ['move --workspace 1']
-  #   match:
-  #     - window_process: { regex: '(?i)^chrome$' }
-  #       window_title: { not_regex: '(?i)excalidraw|picture.in.picture' }
-
   - commands: ['move --workspace 2']
     match:
       - window_process: { regex: '(?i)^(code|cursor)$' }
@@ -107,15 +100,6 @@ window_rules:
     match:
       - window_process: { regex: '(?i)^(outlook|olk)$' }
 
-  # - commands: ['move --workspace 5']
-  #   match:
-  #     - window_process: { regex: '(?i)^slack$' }
-
-  # - commands: ['move --workspace 6']
-  #   match:
-  #     - window_process: { regex: '(?i)^chrome$' }
-  #       window_title: { regex: '(?i)excalidraw' }
-
   - commands: ['move --workspace 7']
     match:
       - window_process: { regex: '(?i)^forti' }
@@ -123,10 +107,6 @@ window_rules:
   - commands: ['move --workspace 9']
     match:
       - window_process: { regex: '(?i)^spotify$' }
-
-  # - commands: ['move --workspace 10']
-  #   match:
-  #     - window_process: { regex: '(?i)^brave$' }
 
 binding_modes:
   - name: 'resize'

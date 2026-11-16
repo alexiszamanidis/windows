@@ -58,7 +58,7 @@
                 "source": "Windows.Terminal.Azure"
             },
             {
-                "commandline": "C:\\Windows\\System32\\wsl.exe -d __WSL_DISTRO__",
+                "commandline": "%SystemRoot%\\System32\\wsl.exe -d __WSL_DISTRO__",
                 "guid": "{__WSL_GUID__}",
                 "hidden": false,
                 "name": "__WSL_DISTRO__",

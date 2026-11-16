@@ -168,7 +168,7 @@
             </div>
         </div>
         <script type="module">
-            import * as zebar from "https://esm.sh/zebar@3";
+            import * as zebar from "https://esm.sh/zebar@3.3.1";
 
             const providers = zebar.createProviderGroup({
                 glazewm: { type: "glazewm" },
@@ -482,6 +482,13 @@
             let playback = null;
             let volumeProc = null;
             let volumeReady = false;
+            let volumeDelay = 1000;
+
+            function scheduleVolumeRetry() {
+                const delay = volumeDelay;
+                volumeDelay = Math.min(volumeDelay * 2, 30000);
+                setTimeout(startVolume, delay);
+            }
 
             function renderVolume() {
                 const icon = document.getElementById("volume-icon");
@@ -511,6 +518,7 @@
                     return;
                 }
                 volumeReady = true;
+                volumeDelay = 1000;
                 if (text === "none") {
                     playback = null;
                     renderVolume();
@@ -549,14 +557,14 @@
                                 return;
                             }
                             volumeProc = null;
-                            if (!volumeReady) {
-                                return;
-                            }
                             volumeReady = false;
-                            setTimeout(startVolume, 1000);
+                            scheduleVolumeRetry();
                         });
                     })
-                    .catch(console.error);
+                    .catch((error) => {
+                        console.error(error);
+                        scheduleVolumeRetry();
+                    });
             }
 
             function renderBattery(battery) {

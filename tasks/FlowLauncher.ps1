@@ -58,12 +58,14 @@ function Disable-WindowsProjectHotkey {
     } catch {
         $existing = ""
     }
-    if ($existing.IndexOf("P", [System.StringComparison]::Ordinal) -lt 0) {
-        $existing += "P"
+    if ($existing.IndexOf("P", [System.StringComparison]::Ordinal) -ge 0) {
+        Write-Information "Windows project shortcut is already disabled."
+        return $false
     }
 
-    New-ItemProperty -LiteralPath $Path -Name "DisabledHotkeys" -PropertyType String -Value $existing -Force | Out-Null
+    New-ItemProperty -LiteralPath $Path -Name "DisabledHotkeys" -PropertyType String -Value ($existing + "P") -Force | Out-Null
     Write-Information "Windows project shortcut is disabled."
+    return $true
 }
 
 function Get-JsonWithProperty {
@@ -485,8 +487,10 @@ function Set-FlowLauncherHotkey {
     }
 
     Stop-FlowLauncher
-    Disable-WindowsProjectHotkey
-    Restart-ExplorerShell
+    # Explorer reads DisabledHotkeys at shell start, so restart only when that value changes.
+    if (Disable-WindowsProjectHotkey) {
+        Restart-ExplorerShell
+    }
     Set-FlowLauncherSetting
     Install-FlowLauncherWindowWalker
     # Flow registers Win+P with RegisterHotKey. When Windows still owns that shortcut, registration fails

@@ -1,0 +1,4 @@
+@{
+    # Hostname of the Linux Input Leap client. Copy this file to input-leap.local.psd1.
+    Client = "linux-hostname"
+}
